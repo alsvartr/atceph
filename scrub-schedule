@@ -1,0 +1,54 @@
+#!/usr/bin/ruby
+require 'json'
+require 'date'
+require File.dirname(__FILE__) + '/lib/color.rb'
+
+scrub_type = "last_scrub_stamp"
+scrub_type = "last_deep_scrub_stamp" if ARGV[0] == "--deep"
+
+puts "Invoke with --deep to show deep scrubs"
+puts "Forming #{scrub_type.red} statistics...\n\n"
+
+output = `ceph pg dump -f json 2>/dev/null`
+pg_dump = JSON.parse(output)
+pg_stats = pg_dump['pg_stats']
+data = Hash.new
+
+pg_stats.each do |pg|
+	last_deep = pg[ scrub_type ]
+	last_deep = DateTime.parse(last_deep).to_time
+	last_deep_date = last_deep.strftime("%Y-%m-%d")
+	last_deep_hour = last_deep.strftime("%H")
+
+	if data[last_deep_date].class == NilClass
+		data[last_deep_date] = Hash.new
+		data[last_deep_date]["total"] = 0
+	end
+	data[last_deep_date][last_deep_hour] = 0 if data[last_deep_date][last_deep_hour] == nil
+
+	data[last_deep_date][last_deep_hour] = data[last_deep_date][last_deep_hour] + 1
+	data[last_deep_date]["total"] = data[last_deep_date]["total"] + 1
+end
+
+data.sort.map do |kdate, vhash|
+	puts "#{kdate.underline.cyan} => 	#{vhash['total']}"
+	hours = nil
+	i = 0
+
+	vhash.sort.map do |khour, vcount|
+		next if khour == "total"
+		if i == 6
+			hours = "#{hours}\n"
+			i = 0
+		end
+
+		if hours == nil
+			hours = "   	#{khour.green}: #{vcount}"
+		else
+			hours = "#{hours}   	#{khour.green}: #{vcount}"
+		end
+		i = i + 1
+	end
+	
+	puts hours
+end
