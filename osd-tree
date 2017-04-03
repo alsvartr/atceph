@@ -1,0 +1,131 @@
+#!/usr/bin/ruby
+require 'json'
+require File.dirname(__FILE__) + '/lib/color.rb'
+
+@tree_json = `ceph osd tree -f json`
+@tree_json = JSON.parse(@tree_json)
+
+id_map = Hash.new
+@types = Hash.new
+
+@tree_json["nodes"].each do |node|
+	parent = node["id"]
+	id_map[parent] = nil if id_map[parent] == nil
+
+	@types[node["type"]] = @types.length if @types.key?(node["type"]) == false
+
+	next if node["children"] == nil
+	node["children"].each do |child_id|
+		id_map[child_id] = parent
+	end
+end
+
+
+id_arr = Array.new
+id_map.each do |k, v|
+	h = Hash["id" => k, "parent" => v]
+	id_arr.push(h)
+end
+
+def printOsd(osds, cnt)
+	if osds["up"].length != 0
+		cnt.times { |i| print "   " }
+		print "UP(#{osds['up'].length}): ".green
+		osds["up"].sort!.each {|osd| print "#{osd}, ".gray }
+		puts ""
+	end
+	if osds["down"].length != 0
+		cnt.times { |i| print "   " }
+		print "DOWN(#{osds['down'].length}): ".red
+		osds["down"].sort!.each {|osd| print "#{osd}, ".gray }
+		puts ""
+	end
+end
+
+def getChilds(arr, node, iter)
+	childs = arr.select {|e| e["parent"] == node["id"]}
+	childs = childs.sort_by { |hsh| -hsh["id"] }
+	@pr = "#{@pr}   "
+
+	return nil if childs.length == 0
+	@osd_count = 0
+	@osd_start = false
+	@osds = Hash["up" => Array.new, "down" => Array.new]
+
+	childs.each do |child|
+		child_obj = @tree_json["nodes"].select {|e| e["id"] == child["id"]}
+		child_obj = child_obj[0]
+		parent_obj = @tree_json["nodes"].select {|e| e["id"] == node["id"]}
+		parent_obj = parent_obj[0]		
+
+		if child_obj["type"] == "osd"
+			@osd_start = true
+			@osd_count += 1
+			@osds[child_obj["status"]].push(child["id"])
+
+			if @osd_count == childs.length
+	                        @osd_start = false
+				printOsd(@osds, @types[parent_obj["type"]])
+				next
+			else
+				next
+			end
+		end
+
+#		@types[child_obj["type"]].times { |i| print "   " }
+		parent_obj = @tree_json["nodes"].select {|e| e["id"] == node["id"]}
+		type = @types[parent_obj[0]["type"]]+1
+		type.times { |i| print "   " }
+		puts "#{child_obj['type'].brown} #{child_obj['name'].cyan}"
+		getChilds(arr, child, iter+1)
+	end
+end
+
+
+roots = id_arr.select {|e| e["parent"] == nil}
+roots = roots.sort_by { |hsh| -hsh["id"] }
+
+roots.each do |root|
+	root_obj = @tree_json["nodes"].select {|e| e["id"] == root["id"]}
+	root_obj = root_obj[0]
+	puts "#{root_obj['type'].brown} #{root_obj['name'].cyan}"
+	@childs = getChilds(id_arr, root, 0)
+end
+
+
+dump_json = `ceph osd dump -f json`
+dump_json = JSON.parse(dump_json)
+rules_json = `ceph osd crush rule dump -f json`
+rules_json = JSON.parse(rules_json)
+pools = Hash.new
+
+dump_json["pools"].each do |pool|
+	pools[pool["pool_name"]] = pool["crush_ruleset"]
+end
+puts ""
+
+rules_json.each do |rule|
+	print "rule".brown
+	print " #{rule['rule_id'].to_s.gray}: #{rule['rule_name'].cyan}"
+
+	steps = rule["steps"]
+	steps.each do |step|
+		next if step["emit"]
+
+		if step["op"] == "take"
+			print " step take".gray
+			print " #{step['item_name'].cyan}"
+		end
+		if step["op"] =~ /choose/
+			print " #{step['op']}".gray
+			print " #{step['type']}".cyan
+		end
+	end
+
+	pool_line = ""
+	pools.each_with_index do |(pool, pool_rule), index|
+		pool_line = "#{pool_line}#{pool} " if pool_rule == rule['rule_id']
+	end
+	print " [ #{pool_line}]".gray
+	puts ""
+end

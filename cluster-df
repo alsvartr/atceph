@@ -1,0 +1,100 @@
+#!/usr/bin/ruby
+require 'json'
+require 'optparse'
+require File.dirname(__FILE__) + '/lib/color.rb'
+require File.dirname(__FILE__) + '/lib/filesize.rb'
+
+options = {}
+OptionParser.new do |opts|
+	opts.banner = "Usage: cluster-df [options]"
+
+	opts.on("-h", "--human", "Show data in human readable format") do |b|
+		options[:human] = b
+	end
+	opts.on("-p", "--pool", "Show data for specific pool") do |p|
+		options[:pool] = ARGV[0]
+	end
+end.parse!
+
+cephdf = `ceph df -f json 2>/dev/null`
+cephdf = JSON.parse(cephdf)
+
+if options[:pool] == nil
+	#pools = `rados lspools 2>/dev/null`.split("\n")
+	pools = cephdf["pools"]
+else
+	pools = Array(options[:pool])
+end
+
+
+total_rbd_size = 0
+total_rbd_replic_size = 0
+pools_data = Array.new
+puts "POOLS:"
+print "	NAME".ljust(25).cyan
+Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
+puts ""
+
+pools.each do |pool|
+	rbd = `rbd --format json ls -l #{pool["name"]} 2>/dev/null`
+	rbd = JSON.parse(rbd)
+
+	pool_info = Hash["name" => pool["name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => pool["stats"]["bytes_used"], "raw_replic" => pool["stats"]["bytes_used"] * 3, "raw_perc" => 0]
+	## Ceph is calculating max. avail. as 90% of total, but we need total
+	pool_info["avail"] = pool["stats"]["max_avail"] * 100 / 90
+
+	rbd.each do |rbd_vol|
+		next if rbd_vol["snapshot"] != nil
+		pool_info["rbd_size"] = pool_info["rbd_size"] + rbd_vol["size"]
+	end
+
+	pool_replicas = `ceph osd pool get #{pool["name"]} size 2>/dev/null | awk '{print $2}'`
+	pool_info["rbd_replic"] = pool_info["rbd_size"] * pool_replicas.to_i
+
+	pool_info["rbd_perc"] = pool_info["rbd_size"] * 100 / pool_info["avail"]
+	pool_info["raw_perc"] = pool_info["raw_size"] * 100 / pool_info["avail"]
+
+	total_rbd_size = total_rbd_size + pool_info["rbd_size"]
+	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
+	pools_data.push(pool_info)
+
+	pool_info.each do |key, val|
+		if key == "name"
+			print "	#{val.ljust(24)}"
+			next
+		end
+		if key =~ /perc/
+			val = "#{val} %"
+		else
+			val = Filesize.do("#{val} B") if options[:human]
+		end
+		print "#{val.ljust(20)}"
+	end
+	puts ""
+end
+
+total_df_size = cephdf["stats"]["total_bytes"]
+total_df_replic = cephdf["stats"]["total_used_bytes"]
+total_df_used = total_df_replic/3
+total_rbd_perc = total_rbd_size * 100 / total_df_size
+total_df_perc = total_df_used * 100 / total_df_size
+
+if options[:human]
+	total_df_size = Filesize.do("#{total_df_size} B")
+	total_rbd_size = Filesize.do("#{total_rbd_size} B")
+	total_rbd_replic_size = Filesize.do("#{total_rbd_replic_size} B")
+	total_df_used = Filesize.do("#{total_df_used} B")
+	total_df_replic = Filesize.do("#{total_df_replic} B")
+	total_rbd_perc = Filesize.do("#{total_rbd_perc} B")
+	total_df_perc = Filesize.do("#{total_df_perc} B")
+end
+
+#puts "GLOBAL:\n	TOTAL	RBD USED		RBD REPLIC.		RAW USED	RAW REPLIC."
+puts "GLOBAL:"
+print "	DEST".ljust(25).cyan
+Array["TOTAL", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
+puts ""
+
+print "	Cluster".ljust(25)
+print "#{total_df_size.ljust(24)}#{total_rbd_size.ljust(20)}#{total_rbd_replic_size.ljust(20)}#{total_rbd_perc.ljust(20)}"
+print "#{total_df_used.ljust(20)}#{total_df_replic.ljust(20)}#{total_df_perc.ljust(20)}\n"
