@@ -1,7 +1,7 @@
 #!/usr/bin/ruby
 require 'json'
 require 'date'
-require File.dirname(__FILE__) + '/lib/color.rb'
+require __dir__ + '/lib/color.rb'
 
 scrub_type = "last_scrub_stamp"
 scrub_type = "last_deep_scrub_stamp" if ARGV[0] == "--deep"

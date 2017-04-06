@@ -1,6 +1,6 @@
 #!/usr/bin/ruby
 require 'json'
-require File.dirname(__FILE__) + '/lib/color.rb'
+require __dir__ + '/lib/color.rb'
 
 @tree_json = `ceph osd tree -f json`
 @tree_json = JSON.parse(@tree_json)

@@ -1,8 +1,8 @@
 #!/usr/bin/ruby
 require 'json'
 require 'optparse'
-require File.dirname(__FILE__) + '/lib/color.rb'
-require File.dirname(__FILE__) + '/lib/filesize.rb'
+require __dir__ + '/lib/color.rb'
+require __dir__ + '/lib/filesize.rb'
 
 options = {}
 OptionParser.new do |opts|
