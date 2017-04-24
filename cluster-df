@@ -8,11 +8,11 @@ options = {}
 OptionParser.new do |opts|
 	opts.banner = "Usage: cluster-df [options]"
 
-	opts.on("-c", "--config", "Use this configuration file instead of the default") do |p|
-		options[:pool] = ARGV[0]
+	opts.on("-c", "--config", "Use this configuration file instead of the default") do |c|
+		options[:config] = ARGV[0]
 	end
-	opts.on("-n", "--name", "Client name for authentication") do |p|
-		options[:pool] = ARGV[0]
+	opts.on("-n", "--name", "Client name for authentication") do |n|
+		options[:name] = ARGV[0]
 	end
 	opts.on("-h", "--human", "Show data in human readable format") do |b|
 		options[:human] = b
@@ -24,7 +24,7 @@ end.parse!
 
 ceph_args = ""
 ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
-ceph_args = "#{ceph_args} --name #{[:name]}"		if options[:name] != nil
+ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
 cephdf = `ceph df #{ceph_args} -f json 2>/dev/null`
 cephdf = JSON.parse(cephdf)
