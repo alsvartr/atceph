@@ -87,7 +87,10 @@ rules_json.each do |rule|
 	rule_info = Hash["name" => rule["rule_name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => 0, "raw_replic" => 0, "raw_perc" => 0]
 
 	pools_data.each do |pool|
-		crush_rule = `ceph osd pool get #{pool['name']} crush_ruleset`
+		crush_rule = `ceph osd pool get #{pool['name']} crush_ruleset -f json`
+		crush_rule = JSON.parse(crush_rule)
+		crush_rule = crush_rule['crush_ruleset']
+		
 		if crush_rule == rule['rule_id']
 			Array["avail", 'rbd_size', 'rbd_replic', 'rbd_perc', 'raw_size', 'raw_replic', 'raw_perc'].each { |str| rule_info[str] = rule_info[str] + pool[str] }
 		end
