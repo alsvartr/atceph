@@ -73,6 +73,41 @@ pools.each do |pool|
 	puts ""
 end
 
+
+
+rules_json = `ceph osd crush rule dump -f json`
+rules_json = JSON.parse(rules_json)
+
+puts "RULES:"
+print "	NAME".ljust(25).cyan
+Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
+puts ""
+
+rules_json.each do |rule|
+	rule_info = Hash["name" => rule["rule_name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => 0, "raw_replic" => 0, "raw_perc" => 0]
+
+	pools_data.each do |pool|
+		crush_rule = `ceph osd pool get #{pool} crush_ruleset`
+		if crush_rule == rule['rule_id']
+			Array["avail", 'rbd_size', 'rbd_replic', 'rbd_perc', 'raw_size', 'raw_replic', 'raw_perc'].each { |str| rule_info[str] = rule_info[str] + pool[str] }
+		end
+	end
+
+	rule_info.each do |key, val|
+		if key == "name"
+			print "	#{val.ljust(24)}"
+			next
+		end
+		if key =~ /perc/
+			val = "#{val} %"
+		else
+			val = Filesize.do("#{val} B") if options[:human]
+		end
+		print "#{val.ljust(20)}"
+	end
+	puts ""
+end
+
 total_df_size = cephdf["stats"]["total_bytes"]
 total_df_replic = cephdf["stats"]["total_used_bytes"]
 total_df_used = total_df_replic/3
