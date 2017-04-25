@@ -151,6 +151,6 @@ if options[:show] == nil || options[:show] == "cluster"
 	puts ""
 
 	print "	Cluster".ljust(25)
-	print "#{total_df_size.ljust(24)}#{total_rbd_size.ljust(20)}#{total_rbd_replic_size.ljust(20)}#{total_rbd_perc.ljust(20)}"
-	print "#{total_df_used.ljust(20)}#{total_df_replic.ljust(20)}#{total_df_perc.ljust(20)}\n"
+	print "#{total_df_size.to_s.ljust(24)}#{total_rbd_size.to_s.ljust(20)}#{total_rbd_replic_size.to_s.ljust(20)}#{total_rbd_perc.to_s.ljust(20)}"
+	print "#{total_df_used.to_s.ljust(20)}#{total_df_replic.to_s.ljust(20)}#{total_df_perc.to_s.ljust(20)}\n"
 end
