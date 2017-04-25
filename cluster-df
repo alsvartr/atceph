@@ -67,6 +67,7 @@ pools.each do |pool|
 
 	if options[:show] == nil || options[:show] == "pools"
 	pool_info.each do |key, val|
+		val = val.to_s
 		if key == "name"
 			print "	#{val.ljust(24)}"
 			next
