@@ -17,8 +17,8 @@ OptionParser.new do |opts|
 	opts.on("-h", "--human", "Show data in human readable format") do |b|
 		options[:human] = b
 	end
-	opts.on("-p", "--pool", "Show data for specific pool") do |p|
-		options[:pool] = ARGV[0]
+	opts.on("-s", "--show", "Suppress normal output, show only [pools, rules, cluster] info") do |s|
+		options[:show] = ARGV[0]
 	end
 end.parse!
 
@@ -28,21 +28,19 @@ ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
 cephdf = `ceph df #{ceph_args} -f json 2>/dev/null`
 cephdf = JSON.parse(cephdf)
-
-if options[:pool] == nil
-	pools = cephdf["pools"]
-else
-	pools = Array(options[:pool])
-end
+pools = cephdf["pools"]
 
 
 total_rbd_size = 0
 total_rbd_replic_size = 0
 pools_data = Array.new
-puts "POOLS:"
-print "	NAME".ljust(25).cyan
-Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
-puts ""
+
+if options[:show] == nil || options[:show] == "pools"
+	puts "POOLS:"
+	print "	NAME".ljust(25).cyan
+	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
+	puts ""
+end
 
 pools.each do |pool|
 	rbd = `rbd #{ceph_args} --format json ls -l #{pool["name"]} 2>/dev/null`
@@ -67,6 +65,7 @@ pools.each do |pool|
 	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
 	pools_data.push(pool_info)
 
+	if options[:show] == nil || options[:show] == "pools"
 	pool_info.each do |key, val|
 		if key == "name"
 			print "	#{val.ljust(24)}"
@@ -80,6 +79,7 @@ pools.each do |pool|
 		print "#{val.ljust(20)}"
 	end
 	puts ""
+	end
 end
 
 
@@ -87,10 +87,12 @@ end
 rules_json = `ceph #{ceph_args} osd crush rule dump -f json`
 rules_json = JSON.parse(rules_json)
 
-puts "RULES:"
-print "	NAME".ljust(25).cyan
-Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
-puts ""
+if options[:show] == nil || options[:show] == "rules"
+	puts "RULES:"
+	print "	NAME".ljust(25).cyan
+	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
+	puts ""
+end
 
 rules_json.each do |rule|
 	rule_info = Hash["name" => rule["rule_name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => 0, "raw_replic" => 0, "raw_perc" => 0]
@@ -106,6 +108,7 @@ rules_json.each do |rule|
 		end
 	end
 
+	if options[:show] == nil || options[:show] == "rules"
 	rule_info.each do |key, val|
 		if key == "name"
 			print "	#{val.ljust(24)}"
@@ -119,6 +122,7 @@ rules_json.each do |rule|
 		print "#{val.ljust(20)}"
 	end
 	puts ""
+	end
 end
 
 total_df_size = cephdf["stats"]["total_bytes"]
@@ -137,12 +141,14 @@ if options[:human]
 	total_df_perc = Filesize.do("#{total_df_perc} B")
 end
 
-#puts "GLOBAL:\n	TOTAL	RBD USED		RBD REPLIC.		RAW USED	RAW REPLIC."
-puts "GLOBAL:"
-print "	DEST".ljust(25).cyan
-Array["TOTAL", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
-puts ""
 
-print "	Cluster".ljust(25)
-print "#{total_df_size.ljust(24)}#{total_rbd_size.ljust(20)}#{total_rbd_replic_size.ljust(20)}#{total_rbd_perc.ljust(20)}"
-print "#{total_df_used.ljust(20)}#{total_df_replic.ljust(20)}#{total_df_perc.ljust(20)}\n"
+if options[:show] == nil || options[:show] == "cluster"
+	puts "GLOBAL:"
+	print "	DEST".ljust(25).cyan
+	Array["TOTAL", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
+	puts ""
+
+	print "	Cluster".ljust(25)
+	print "#{total_df_size.ljust(24)}#{total_rbd_size.ljust(20)}#{total_rbd_replic_size.ljust(20)}#{total_rbd_perc.ljust(20)}"
+	print "#{total_df_used.ljust(20)}#{total_df_replic.ljust(20)}#{total_df_perc.ljust(20)}\n"
+end
