@@ -39,7 +39,7 @@ total_rbd_size = 0
 total_rbd_replic_size = 0
 pools_data = Array.new
 
-if options[:show] == nil || options[:show] == "pools" || options[:format] == nil
+if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
 	puts "POOLS:"
 	print "	NAME".ljust(25).cyan
 	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
@@ -74,7 +74,7 @@ pools.each do |pool|
 	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
 	pools_data.push(pool_info)
 
-	if options[:show] == nil || options[:show] == "pools" || options[:format] == nil
+	if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
 	pool_info.each do |key, val|
 		val = val.to_s
 		if key == "name"
@@ -98,7 +98,7 @@ end
 rules_json = `ceph #{ceph_args} osd crush rule dump -f json`
 rules_json = JSON.parse(rules_json)
 
-if options[:show] == nil || options[:show] == "rules" || options[:format] == nil
+if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
 	puts "RULES:"
 	print "	NAME".ljust(25).cyan
 	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
@@ -119,7 +119,7 @@ rules_json.each do |rule|
 		end
 	end
 
-	if options[:show] == nil || options[:show] == "rules" || options[:format] == nil
+	if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
 	rule_info.each do |key, val|
 		val = val.to_s
 		if key == "name"
@@ -155,7 +155,7 @@ if options[:human]
 end
 
 
-if options[:show] == nil || options[:show] == "cluster" || options[:format] == nil
+if (options[:show] == nil || options[:show] == "cluster") && options[:format] == nil
 	puts "GLOBAL:"
 	print "	DEST".ljust(25).cyan
 	Array["TOTAL", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
