@@ -161,7 +161,7 @@ if (options[:show] == nil || options[:show] == "cluster") && options[:format] ==
 	puts ""
 
 	total_rbd_perc = "#{total_rbd_perc} %"
-	total_raw_perc = "#{total_df_perc} %"
+	total_raw_perc = "#{total_raw_perc} %"
 
 	print "	Cluster".ljust(25)
 	print "#{total_size.to_s.ljust(20)}#{total_rbd_size.to_s.ljust(20)}#{total_rbd_replic_size.to_s.ljust(20)}#{total_rbd_perc.to_s.ljust(20)}"
