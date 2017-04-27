@@ -14,6 +14,9 @@ OptionParser.new do |opts|
 	opts.on("-n", "--name", "Client name for authentication") do |n|
 		options[:name] = ARGV[0]
 	end
+	opts.on("-f", "--format", "Change output format") do |f|
+		options[:format] = ARGV[0]
+	end
 	opts.on("-h", "--human", "Show data in human readable format") do |b|
 		options[:human] = b
 	end
@@ -29,13 +32,14 @@ ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 cephdf = `ceph df #{ceph_args} -f json 2>/dev/null`
 cephdf = JSON.parse(cephdf)
 pools = cephdf["pools"]
+data = Hash["pools" => Array.new, "rules" => Array.new, "cluster" => Array.new]
 
 
 total_rbd_size = 0
 total_rbd_replic_size = 0
 pools_data = Array.new
 
-if options[:show] == nil || options[:show] == "pools"
+if options[:show] == nil || options[:show] == "pools" || options[:format] == nil
 	puts "POOLS:"
 	print "	NAME".ljust(25).cyan
 	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
@@ -70,7 +74,7 @@ pools.each do |pool|
 	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
 	pools_data.push(pool_info)
 
-	if options[:show] == nil || options[:show] == "pools"
+	if options[:show] == nil || options[:show] == "pools" || options[:format] == nil
 	pool_info.each do |key, val|
 		val = val.to_s
 		if key == "name"
@@ -86,6 +90,7 @@ pools.each do |pool|
 	end
 	puts ""
 	end
+	data["pools"].push(pool_info)
 end
 
 
@@ -93,7 +98,7 @@ end
 rules_json = `ceph #{ceph_args} osd crush rule dump -f json`
 rules_json = JSON.parse(rules_json)
 
-if options[:show] == nil || options[:show] == "rules"
+if options[:show] == nil || options[:show] == "rules" || options[:format] == nil
 	puts "RULES:"
 	print "	NAME".ljust(25).cyan
 	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
@@ -114,7 +119,7 @@ rules_json.each do |rule|
 		end
 	end
 
-	if options[:show] == nil || options[:show] == "rules"
+	if options[:show] == nil || options[:show] == "rules" || options[:format] == nil
 	rule_info.each do |key, val|
 		val = val.to_s
 		if key == "name"
@@ -130,6 +135,7 @@ rules_json.each do |rule|
 	end
 	puts ""
 	end
+	data["rules"].push(rule_info)
 end
 
 total_df_size = cephdf["stats"]["total_bytes"]
@@ -149,7 +155,7 @@ if options[:human]
 end
 
 
-if options[:show] == nil || options[:show] == "cluster"
+if options[:show] == nil || options[:show] == "cluster" || options[:format] == nil
 	puts "GLOBAL:"
 	print "	DEST".ljust(25).cyan
 	Array["TOTAL", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
@@ -158,4 +164,8 @@ if options[:show] == nil || options[:show] == "cluster"
 	print "	Cluster".ljust(25)
 	print "#{total_df_size.to_s.ljust(24)}#{total_rbd_size.to_s.ljust(20)}#{total_rbd_replic_size.to_s.ljust(20)}#{total_rbd_perc.to_s.ljust(20)}"
 	print "#{total_df_used.to_s.ljust(20)}#{total_df_replic.to_s.ljust(20)}#{total_df_perc.to_s.ljust(20)}\n"
+end
+
+if options[:format] == "json"
+	puts data.to_json
 end
