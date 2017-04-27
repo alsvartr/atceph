@@ -159,9 +159,12 @@ if (options[:show] == nil || options[:show] == "cluster") && options[:format] ==
 	Array["TOTAL", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
 	puts ""
 
+	total_rbd_perc = "#{total_rbd_perc} %"
+	total_df_perc = "#{total_df_perc} %"
+
 	print "	Cluster".ljust(25)
-	print "#{total_df_size.to_s.ljust(20)}#{total_rbd_size.to_s.ljust(20)}#{total_rbd_replic_size.to_s.ljust(20)}#{total_rbd_perc.to_s.ljust(20)} %"
-	print "#{total_df_used.to_s.ljust(20)}#{total_df_replic.to_s.ljust(20)}#{total_df_perc.to_s.ljust(20)} %\n"
+	print "#{total_df_size.to_s.ljust(20)}#{total_rbd_size.to_s.ljust(20)}#{total_rbd_replic_size.to_s.ljust(20)}#{total_rbd_perc.to_s.ljust(20)}"
+	print "#{total_df_used.to_s.ljust(20)}#{total_df_replic.to_s.ljust(20)}#{total_df_perc.to_s.ljust(20)}\n"
 end
 
 if options[:format] == "json"
