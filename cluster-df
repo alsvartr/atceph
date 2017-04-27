@@ -44,7 +44,12 @@ end
 
 pools.each do |pool|
 	rbd = `rbd #{ceph_args} --format json ls -l #{pool["name"]} 2>/dev/null`
-	rbd = JSON.parse(rbd)
+	begin
+		rbd = JSON.parse(rbd)
+	rescue Exception => e
+		puts "Error parsing pool #{pool}: #{e}"
+		next
+	end
 
 	pool_info = Hash["name" => pool["name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => pool["stats"]["bytes_used"], "raw_replic" => pool["stats"]["bytes_used"] * 3, "raw_perc" => 0]
 	## Ceph is calculating max. avail. as 90% of total, but we need total
