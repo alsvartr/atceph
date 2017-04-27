@@ -29,8 +29,14 @@ ceph_args = ""
 ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
 ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
-cephdf = `ceph df #{ceph_args} -f json 2>/dev/null`
-cephdf = JSON.parse(cephdf)
+begin
+	cephdf = `ceph #{ceph_args} -f json df 2>/dev/null`
+	cephdf = JSON.parse(cephdf)
+rescue Exception => e
+	puts "Error parsing 'ceph df' output: #{e}"
+	exit
+end
+
 data = Hash["pools" => Array.new, "rules" => Array.new, "cluster" => Array.new]
 
 
@@ -46,8 +52,8 @@ if (options[:show] == nil || options[:show] == "pools") && options[:format] == n
 end
 
 cephdf["pools"].each do |pool|
-	rbd = `rbd #{ceph_args} --format json ls -l #{pool["name"]} 2>/dev/null`
 	begin
+		rbd = `rbd #{ceph_args} -f json ls -l #{pool["name"]} 2>/dev/null`
 		rbd = JSON.parse(rbd)
 	rescue Exception => e
 		puts "Error parsing pool #{pool['name']}: #{e}"
@@ -63,8 +69,15 @@ cephdf["pools"].each do |pool|
 		pool_info["rbd_size"] = pool_info["rbd_size"] + rbd_vol["size"]
 	end
 
-	pool_replicas = `ceph #{ceph_args} osd pool get #{pool["name"]} size 2>/dev/null | awk '{print $2}'`
-	pool_info["rbd_replic"] = pool_info["rbd_size"] * pool_replicas.to_i
+	begin
+		pool_replicas = `ceph #{ceph_args} -f json osd pool get #{pool["name"]} size 2>/dev/null`
+		pool_replicas = JSON.parse(pool_replicas)
+	rescue Exception => e
+		puts "Error parsing pool size #{pool['name']}: #{e}"
+		next
+	end
+
+	pool_info["rbd_replic"] = pool_info["rbd_size"] * pool_replicas["size"].to_i
 
 	pool_info["rbd_perc"] = pool_info["rbd_size"] * 100 / pool_info["avail"]
 	pool_info["raw_perc"] = pool_info["raw_size"] * 100 / pool_info["avail"]
@@ -94,8 +107,13 @@ end
 
 
 
-rules_json = `ceph #{ceph_args} osd crush rule dump -f json`
-rules_json = JSON.parse(rules_json)
+begin
+	rules_json = `ceph #{ceph_args} -f json osd crush rule dump 2>/dev/null`
+	rules_json = JSON.parse(rules_json)
+rescue Exception => e
+	puts "Error parsing crush rules: #{e}"
+	exit
+end
 
 if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
 	puts "RULES:"
@@ -108,11 +126,15 @@ rules_json.each do |rule|
 	rule_info = Hash["name" => rule["rule_name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => 0, "raw_replic" => 0, "raw_perc" => 0]
 
 	data["pools"].each do |pool|
-		crush_rule = `ceph #{ceph_args} osd pool get #{pool['name']} crush_ruleset -f json`
-		crush_rule = JSON.parse(crush_rule)
-		crush_rule = crush_rule['crush_ruleset']
+		begin
+			crush_rule = `ceph #{ceph_args} -f json osd pool get #{pool['name']} crush_ruleset 2>/dev/null`
+			crush_rule = JSON.parse(crush_rule)
+		rescue Exception => e
+			puts "Error parsing crush ruleset on #{pool['name']}: #{e}"
+			next
+		end
 
-		if crush_rule == rule['rule_id']
+		if crush_rule["crush_ruleset"] == rule['rule_id']
 			rule_info['avail'] = pool['avail']
 			Array['rbd_size', 'rbd_replic', 'rbd_perc', 'raw_size', 'raw_replic', 'raw_perc'].each { |str| rule_info[str] = rule_info[str] + pool[str] }
 		end
