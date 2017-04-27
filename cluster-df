@@ -37,6 +37,7 @@ data = Hash["pools" => Array.new, "rules" => Array.new, "cluster" => Array.new]
 
 total_rbd_size = 0
 total_rbd_replic_size = 0
+total_raw_size = 0
 pools_data = Array.new
 
 if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
