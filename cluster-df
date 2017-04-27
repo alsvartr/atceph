@@ -50,7 +50,7 @@ def printHeader(header)
 	puts ""
 end
 
-def printVals(vals)
+def printVals(vals, human = False)
 	vals.each do |key, val|
 		val = val.to_s
 		if key == "name"
@@ -104,7 +104,7 @@ cephdf["pools"].each do |pool|
 	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
 	total_raw_size = total_raw_size + pool_info["raw_size"]
 
-	printVals(pool_info) if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
+	printVals(pool_info, options[:human]) if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
 	data["pools"].push(pool_info)
 end
 
@@ -137,7 +137,7 @@ rules_json.each do |rule|
 		end
 	end
 
-	printVals(rule_info) if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
+	printVals(rule_info, options[:human]) if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
 	data["rules"].push(rule_info)
 end
 
