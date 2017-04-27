@@ -60,7 +60,7 @@ def printVals(vals, human = False)
 		if key =~ /perc/
 			val = "#{val} %"
 		else
-			val = Filesize.do("#{val} B") if options[:human]
+			val = Filesize.do("#{val} B") if human
 		end
 		print "#{val.ljust(20)}"
 	end
