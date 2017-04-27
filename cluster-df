@@ -29,6 +29,11 @@ ceph_args = ""
 ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
 ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
+data = Hash["pools" => Array.new, "rules" => Array.new, "cluster" => Array.new]
+total_rbd_size = 0
+total_rbd_replic_size = 0
+total_raw_size = 0
+
 begin
 	cephdf = `ceph #{ceph_args} --format json df 2>/dev/null`
 	cephdf = JSON.parse(cephdf)
@@ -37,20 +42,33 @@ rescue Exception => e
 	exit
 end
 
-data = Hash["pools" => Array.new, "rules" => Array.new, "cluster" => Array.new]
 
-
-total_rbd_size = 0
-total_rbd_replic_size = 0
-total_raw_size = 0
-
-if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
-	puts "POOLS:"
+def printHeader(header)
+	puts "#{header}:"
 	print "	NAME".ljust(25).cyan
 	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
 	puts ""
 end
 
+def printVals(vals)
+	vals.each do |key, val|
+		val = val.to_s
+		if key == "name"
+			print "	#{val.ljust(24)}"
+			next
+		end
+		if key =~ /perc/
+			val = "#{val} %"
+		else
+			val = Filesize.do("#{val} B") if options[:human]
+		end
+		print "#{val.ljust(20)}"
+	end
+	puts ""
+end
+
+
+printHeader("POOLS") if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
 cephdf["pools"].each do |pool|
 	begin
 		rbd = `rbd #{ceph_args} --format json ls -l #{pool["name"]} 2>/dev/null`
@@ -86,22 +104,7 @@ cephdf["pools"].each do |pool|
 	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
 	total_raw_size = total_raw_size + pool_info["raw_size"]
 
-	if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
-	pool_info.each do |key, val|
-		val = val.to_s
-		if key == "name"
-			print "	#{val.ljust(24)}"
-			next
-		end
-		if key =~ /perc/
-			val = "#{val} %"
-		else
-			val = Filesize.do("#{val} B") if options[:human]
-		end
-		print "#{val.ljust(20)}"
-	end
-	puts ""
-	end
+	printVals(pool_info) if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
 	data["pools"].push(pool_info)
 end
 
@@ -115,13 +118,7 @@ rescue Exception => e
 	exit
 end
 
-if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
-	puts "RULES:"
-	print "	NAME".ljust(25).cyan
-	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
-	puts ""
-end
-
+printHeader("RULES") if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
 rules_json.each do |rule|
 	rule_info = Hash["name" => rule["rule_name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => 0, "raw_replic" => 0, "raw_perc" => 0]
 
@@ -140,22 +137,7 @@ rules_json.each do |rule|
 		end
 	end
 
-	if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
-	rule_info.each do |key, val|
-		val = val.to_s
-		if key == "name"
-			print "	#{val.ljust(24)}"
-			next
-		end
-		if key =~ /perc/
-			val = "#{val} %"
-		else
-			val = Filesize.do("#{val} B") if options[:human]
-		end
-		print "#{val.ljust(20)}"
-	end
-	puts ""
-	end
+	printVals(rule_info) if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
 	data["rules"].push(rule_info)
 end
 
@@ -174,10 +156,7 @@ end
 
 
 if (options[:show] == nil || options[:show] == "cluster") && options[:format] == nil
-	puts "GLOBAL:"
-	print "	DEST".ljust(25).cyan
-	Array["TOTAL", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
-	puts ""
+	printHeader("CLUSTER")
 
 	total_rbd_perc = "#{total_rbd_perc} %"
 	total_raw_perc = "#{total_raw_perc} %"
