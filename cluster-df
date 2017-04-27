@@ -150,8 +150,6 @@ if options[:human]
 	total_rbd_replic_size = Filesize.do("#{total_rbd_replic_size} B")
 	total_df_used = Filesize.do("#{total_df_used} B")
 	total_df_replic = Filesize.do("#{total_df_replic} B")
-	total_rbd_perc = Filesize.do("#{total_rbd_perc} B")
-	total_df_perc = Filesize.do("#{total_df_perc} B")
 end
 
 
@@ -162,8 +160,8 @@ if (options[:show] == nil || options[:show] == "cluster") && options[:format] ==
 	puts ""
 
 	print "	Cluster".ljust(25)
-	print "#{total_df_size.to_s.ljust(24)}#{total_rbd_size.to_s.ljust(20)}#{total_rbd_replic_size.to_s.ljust(20)}#{total_rbd_perc.to_s.ljust(20)}"
-	print "#{total_df_used.to_s.ljust(20)}#{total_df_replic.to_s.ljust(20)}#{total_df_perc.to_s.ljust(20)}\n"
+	print "#{total_df_size.to_s.ljust(20)}#{total_rbd_size.to_s.ljust(20)}#{total_rbd_replic_size.to_s.ljust(20)}#{total_rbd_perc.to_s.ljust(20)} %"
+	print "#{total_df_used.to_s.ljust(20)}#{total_df_replic.to_s.ljust(20)}#{total_df_perc.to_s.ljust(20)} %\n"
 end
 
 if options[:format] == "json"
