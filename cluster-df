@@ -30,7 +30,7 @@ ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
 ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
 begin
-	cephdf = `ceph #{ceph_args} -f json df 2>/dev/null`
+	cephdf = `ceph #{ceph_args} --format json df 2>/dev/null`
 	cephdf = JSON.parse(cephdf)
 rescue Exception => e
 	puts "Error parsing 'ceph df' output: #{e}"
@@ -53,7 +53,7 @@ end
 
 cephdf["pools"].each do |pool|
 	begin
-		rbd = `rbd #{ceph_args} -f json ls -l #{pool["name"]} 2>/dev/null`
+		rbd = `rbd #{ceph_args} --format json ls -l #{pool["name"]} 2>/dev/null`
 		rbd = JSON.parse(rbd)
 	rescue Exception => e
 		puts "Error parsing pool #{pool['name']}: #{e}"
@@ -70,7 +70,7 @@ cephdf["pools"].each do |pool|
 	end
 
 	begin
-		pool_replicas = `ceph #{ceph_args} -f json osd pool get #{pool["name"]} size 2>/dev/null`
+		pool_replicas = `ceph #{ceph_args} --format json osd pool get #{pool["name"]} size 2>/dev/null`
 		pool_replicas = JSON.parse(pool_replicas)
 	rescue Exception => e
 		puts "Error parsing pool size #{pool['name']}: #{e}"
@@ -108,7 +108,7 @@ end
 
 
 begin
-	rules_json = `ceph #{ceph_args} -f json osd crush rule dump 2>/dev/null`
+	rules_json = `ceph #{ceph_args} --format json osd crush rule dump 2>/dev/null`
 	rules_json = JSON.parse(rules_json)
 rescue Exception => e
 	puts "Error parsing crush rules: #{e}"
@@ -127,7 +127,7 @@ rules_json.each do |rule|
 
 	data["pools"].each do |pool|
 		begin
-			crush_rule = `ceph #{ceph_args} -f json osd pool get #{pool['name']} crush_ruleset 2>/dev/null`
+			crush_rule = `ceph #{ceph_args} --format json osd pool get #{pool['name']} crush_ruleset 2>/dev/null`
 			crush_rule = JSON.parse(crush_rule)
 		rescue Exception => e
 			puts "Error parsing crush ruleset on #{pool['name']}: #{e}"
