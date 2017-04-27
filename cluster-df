@@ -47,7 +47,7 @@ pools.each do |pool|
 	begin
 		rbd = JSON.parse(rbd)
 	rescue Exception => e
-		puts "Error parsing pool #{pool}: #{e}"
+		puts "Error parsing pool #{pool['name']}: #{e}"
 		next
 	end
 
