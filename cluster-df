@@ -31,14 +31,12 @@ ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
 cephdf = `ceph df #{ceph_args} -f json 2>/dev/null`
 cephdf = JSON.parse(cephdf)
-pools = cephdf["pools"]
 data = Hash["pools" => Array.new, "rules" => Array.new, "cluster" => Array.new]
 
 
 total_rbd_size = 0
 total_rbd_replic_size = 0
 total_raw_size = 0
-pools_data = Array.new
 
 if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
 	puts "POOLS:"
@@ -47,7 +45,7 @@ if (options[:show] == nil || options[:show] == "pools") && options[:format] == n
 	puts ""
 end
 
-pools.each do |pool|
+cephdf["pools"].each do |pool|
 	rbd = `rbd #{ceph_args} --format json ls -l #{pool["name"]} 2>/dev/null`
 	begin
 		rbd = JSON.parse(rbd)
@@ -74,7 +72,6 @@ pools.each do |pool|
 	total_rbd_size = total_rbd_size + pool_info["rbd_size"]
 	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
 	total_raw_size = total_raw_size + pool_info["raw_size"]
-	pools_data.push(pool_info)
 
 	if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
 	pool_info.each do |key, val|
@@ -110,7 +107,7 @@ end
 rules_json.each do |rule|
 	rule_info = Hash["name" => rule["rule_name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => 0, "raw_replic" => 0, "raw_perc" => 0]
 
-	pools_data.each do |pool|
+	data["pools"].each do |pool|
 		crush_rule = `ceph #{ceph_args} osd pool get #{pool['name']} crush_ruleset -f json`
 		crush_rule = JSON.parse(crush_rule)
 		crush_rule = crush_rule['crush_ruleset']
