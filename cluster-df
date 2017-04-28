@@ -44,7 +44,7 @@ end
 
 
 def printHeader(header)
-	puts "#{header}:"
+	puts "#{header}:".gray
 	print "	NAME".ljust(25).cyan
 	Array["MAX AVAIL.", "PROVISIONED", "PROV. REPLIC.", "%", "USED", "USED REPLIC.", "%"].each { |str| print "#{str.ljust(20).cyan}" }
 	puts ""
@@ -52,17 +52,19 @@ end
 
 def printVals(vals, human = False)
 	vals.each do |key, val|
-		val = val.to_s
 		if key == "name"
-			print "	#{val.ljust(24)}"
+			print "	#{val.ljust(24)}".gray
 			next
 		end
 		if key =~ /perc/
-			val = "#{val} %"
+			str = "#{val} %".red    if val < 100 && val > 50
+			str = "#{val} %".brown  if val < 50 && val > 20
+			str = "#{val} %".green  if val < 20
+			print "#{str.ljust(29)}"
 		else
 			val = Filesize.do("#{val} B") if human
+			print "#{str.ljust(20)}"
 		end
-		print "#{val.ljust(20)}"
 	end
 	puts ""
 end
