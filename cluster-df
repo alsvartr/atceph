@@ -62,7 +62,7 @@ def printVals(vals, human = False)
 			str = "#{val} %".green  if val < 20
 			print "#{str.ljust(29)}"
 		else
-			val = Filesize.do("#{val} B") if human
+			str = Filesize.do("#{val} B") if human
 			print "#{str.ljust(20)}"
 		end
 	end
