@@ -21,7 +21,7 @@ ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
 
 begin
-	images = `ceph #{ceph_args} --format json ls -l vms 2>/dev/null`
+	images = `rbd #{ceph_args} --format json ls -l vms 2>/dev/null`
 	images = JSON.parse(images)
 rescue Exception => e
 	puts "Error parsing 'ceph ls -l vms' output: #{e}"
