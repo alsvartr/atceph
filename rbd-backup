@@ -1,0 +1,41 @@
+#!/usr/bin/ruby
+require 'json'
+require 'optparse'
+require __dir__ + '/lib/color.rb'
+
+options = {}
+OptionParser.new do |opts|
+	opts.banner = "Usage: rbd-backup [options] pool"
+
+	opts.on("-c", "--config", "Use this configuration file instead of the default") do |c|
+		options[:config] = ARGV[0]
+	end
+	opts.on("-n", "--name", "Client name for authentication") do |n|
+		options[:name] = ARGV[0]
+	end
+end.parse!
+
+ceph_args = ""
+ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
+ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
+
+
+begin
+	images = `ceph #{ceph_args} --format json ls -l vms 2>/dev/null`
+	images = JSON.parse(images)
+rescue Exception => e
+	puts "Error parsing 'ceph ls -l vms' output: #{e}"
+	exit
+end
+
+images.each do |image|
+	image_uuid = image["image"]
+	snapshot = image["snapshot"]
+
+	if snapshot == nil
+		puts 'no snapshot, creating'
+	end
+
+	puts "export snapshot #{snapshot}"
+	puts "call dsmc"
+end
