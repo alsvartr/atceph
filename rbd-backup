@@ -18,24 +18,40 @@ end.parse!
 ceph_args = ""
 ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
 ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
-
+images = Hash[]
 
 begin
-	images = `rbd #{ceph_args} --format json ls -l vms 2>/dev/null`
-	images = JSON.parse(images)
+	rbd_images = `rbd #{ceph_args} --format json ls -l vms 2>/dev/null`
+	rbd_images = JSON.parse(rbd_images)
 rescue Exception => e
 	puts "Error parsing 'ceph ls -l vms' output: #{e}"
 	exit
 end
 
-images.each do |image|
-	image_uuid = image["image"]
-	snapshot = image["snapshot"]
-
-	if snapshot == nil
-		puts 'no snapshot, creating'
+rbd_images.each do |rbd_image|
+	image_uuid = rbd_image["image"]
+	if images[image_uuid] == nil
+		## create new hash entry
+		images[image_uuid] = Array.new
 	end
 
-	puts "export snapshot #{snapshot}"
-	puts "call dsmc"
+	## current image has no snapshots
+	next if rbd_image["snapshot"] == nil
+
+	if rbd_image["snapshot"] =~ /BKP_([0-9]+\.){2}[0-9]+/
+		## found old snapshot
+		images[image_uuid].push(rbd_image["snapshot"])
+	end
+end
+
+
+images.each do |image, snaps|
+	puts "processing image #{image}"
+	snaps.sort!
+	while snaps.count >= 2 && snaps.count != 0
+		puts "remove snapshot #{snaps[snaps.count-1]}"
+	end
+	snap_date = Time.now().strftime("%Y.%m.%d")
+	puts "create new snapshot: BKP_#{snap_date}"
+	puts "exporting snapshot"
 end
