@@ -3,9 +3,18 @@ require 'json'
 require 'optparse'
 require __dir__ + '/lib/color.rb'
 
+## number of snapshots to keep in cluster (0 = delete snapshots after backup)
+SNAP_KEEP = 0
+## number of exported snapshots to keep in BACKUP_DIR (0 = delete files after backup)
+LOCAL_KEEP = 0
+## where to export snapshots
+BACKUP_DIR = "/home/"
+## send snapshots to Tivoli
+USE_DSMC = True
+
 options = {}
 OptionParser.new do |opts|
-	opts.banner = "Usage: rbd-backup [options] pool"
+	opts.banner = "Usage: rbd-backup [options] pool [image]"
 
 	opts.on("-c", "--config", "Use this configuration file instead of the default") do |c|
 		options[:config] = ARGV[0]
@@ -15,13 +24,27 @@ OptionParser.new do |opts|
 	end
 end.parse!
 
+options[:backup_pool] = ARGV[ARGV.count-2]
+options[:backup_image] = ARGV[ARGV.count-1]
+
 ceph_args = ""
 ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
 ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 images = Hash[]
 
 begin
-	rbd_images = `rbd #{ceph_args} --format json ls -l vms 2>/dev/null`
+	pool_exist = `rados #{ceph_args} lspools | grep -c #{options[:backup_pool]} 2>/dev/null`
+	if pool_exist == "0"
+		puts "no pool with name #{options[:backup_pool]}"
+		exit
+	end
+rescue Exception => e
+	puts "Error while get ceph pools: #{e}"
+	exit
+end
+
+begin
+	rbd_images = `rbd #{ceph_args} --format json ls -l #{options[:backup_pool]} 2>/dev/null`
 	rbd_images = JSON.parse(rbd_images)
 rescue Exception => e
 	puts "Error parsing 'ceph ls -l vms' output: #{e}"
@@ -30,6 +53,8 @@ end
 
 rbd_images.each do |rbd_image|
 	image_uuid = rbd_image["image"]
+	next if image_uuid != options[:backup_image] && options[:backup_image] != nil
+
 	if images[image_uuid] == nil
 		## create new hash entry
 		images[image_uuid] = Array.new
@@ -44,14 +69,43 @@ rbd_images.each do |rbd_image|
 	end
 end
 
+if images.length == 0
+	if options[:backup_image] != nil
+		puts "no image with name #{options[:backup_image]} found"
+	else
+		puts "no images in pool #{options[:backup_pool]} found" if options[:backup_image]
+	end
+	exit
+end
 
 images.each do |image, snaps|
 	puts "processing image #{image}"
-	snaps.sort!
-	while snaps.count >= 2 && snaps.count != 0
-		puts "remove snapshot #{snaps[snaps.count-1]}"
+	snaps.sort!.reverse!
+
+	## rotate snapshots in cluster
+	while snaps.count >= SNAP_KEEP && snaps.count != 0
+		puts "rbd rm #{snaps[snaps.count-1]}"
+		snaps.delete_at(snaps.count-1)
 	end
+
 	snap_date = Time.now().strftime("%Y.%m.%d")
-	puts "create new snapshot: BKP_#{snap_date}"
-	puts "exporting snapshot"
+	snap_name = "BKP_#{snap_date}"
+	snap_path = "vms/#{image}@#{snap_name}"
+
+	puts "rbd snap create #{snap_path}"
+	puts "rbd export #{snap_path} #{BACKUP_DIR}/#{image}@#{snap_name}"
+
+	if USE_DSMC
+		puts "dsmc backup -subdir=yes #{BACKUP_DIR}/#{image}@#{snap_name}"
+	end
+
+	## remove latest snapshot if KEEP == 0
+	if SNAP_KEEP == 0
+		puts "rbd snap rm #{snap_path}"
+	end
+
+	## remove local snapshot
+	if LOCAL_KEEP == 0
+		puts "rm -f #{BACKUP_DIR}/#{image}@#{snap_name}"
+	end
 end
