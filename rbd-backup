@@ -10,7 +10,7 @@ LOCAL_KEEP = 0
 ## where to export snapshots
 BACKUP_DIR = "/home/"
 ## send snapshots to Tivoli
-USE_DSMC = True
+USE_DSMC = true
 
 options = {}
 OptionParser.new do |opts|
@@ -24,8 +24,12 @@ OptionParser.new do |opts|
 	end
 end.parse!
 
-options[:backup_pool] = ARGV[ARGV.count-2]
-options[:backup_image] = ARGV[ARGV.count-1]
+ARGV.each do |arg|
+        ARGV.delete(arg) if options.values.include? arg
+end
+
+options[:backup_pool] = ARGV[0]
+options[:backup_image] = ARGV[1]
 
 ceph_args = ""
 ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
@@ -34,7 +38,7 @@ images = Hash[]
 
 begin
 	pool_exist = `rados #{ceph_args} lspools | grep -c #{options[:backup_pool]} 2>/dev/null`
-	if pool_exist == "0"
+	if pool_exist.to_i == 0
 		puts "no pool with name #{options[:backup_pool]}"
 		exit
 	end
@@ -47,7 +51,7 @@ begin
 	rbd_images = `rbd #{ceph_args} --format json ls -l #{options[:backup_pool]} 2>/dev/null`
 	rbd_images = JSON.parse(rbd_images)
 rescue Exception => e
-	puts "Error parsing 'ceph ls -l vms' output: #{e}"
+	puts "Error parsing 'ceph ls -l' output: #{e}"
 	exit
 end
 
@@ -78,8 +82,31 @@ if images.length == 0
 	exit
 end
 
+def doExport(image)
+	snap_date = Time.now().strftime("%Y.%m.%d")
+	snap_name = "BKP_#{snap_date}"
+	snap_path = "vms/#{image}@#{snap_name}"
+
+	#puts "rbd snap create #{snap_path}"
+	#puts "[#{act_export_threads}/#{max_export_threads}] rbd export #{snap_path} #{BACKUP_DIR}/#{image}@#{snap_name}"
+	sleep 20
+end
+
+def doArchive(image)
+	snap_date = Time.now().strftime("%Y.%m.%d")
+	snap_name = "BKP_#{snap_date}"
+	#puts "[#{act_dsm_threads}/#{max_dsm_threads}] dsmc backup -subdir=yes #{BACKUP_DIR}/#{image}@#{snap_name}"
+	sleep 120
+end
+
+threads = []
+to_archive = []
+max_export_threads = 1
+max_dsm_threads = 5
+act_export_threads = 0
+act_dsm_threads = 0
+
 images.each do |image, snaps|
-	puts "processing image #{image}"
 	snaps.sort!.reverse!
 
 	## rotate snapshots in cluster
@@ -88,24 +115,36 @@ images.each do |image, snaps|
 		snaps.delete_at(snaps.count-1)
 	end
 
-	snap_date = Time.now().strftime("%Y.%m.%d")
-	snap_name = "BKP_#{snap_date}"
-	snap_path = "vms/#{image}@#{snap_name}"
+	threads << Thread.new do
+		sleep 1 while act_export_threads >= max_export_threads
+		act_export_threads += 1
 
-	puts "rbd snap create #{snap_path}"
-	puts "rbd export #{snap_path} #{BACKUP_DIR}/#{image}@#{snap_name}"
+		puts "[#{act_export_threads}/#{max_export_threads}] => EXPORT: #{image}"
+		doExport(image)
+		act_export_threads -= 1
+		to_archive.push(image) if USE_DSMC
+	end
 
-	if USE_DSMC
-		puts "dsmc backup -subdir=yes #{BACKUP_DIR}/#{image}@#{snap_name}"
+	sleep 1 while to_archive.empty?
+
+	threads << Thread.new do
+		sleep 1 while act_dsm_threads >= max_dsm_threads
+		act_dsm_threads += 1
+
+		puts "[#{act_dsm_threads}/#{max_dsm_threads}] => ARCHIVE: #{image}"
+		doArchive(to_archive.shift)
+		act_dsm_threads -= 1
 	end
 
 	## remove latest snapshot if KEEP == 0
-	if SNAP_KEEP == 0
-		puts "rbd snap rm #{snap_path}"
-	end
+#	if SNAP_KEEP == 0
+#		puts "rbd snap rm #{snap_path}"
+#	end
 
 	## remove local snapshot
-	if LOCAL_KEEP == 0
-		puts "rm -f #{BACKUP_DIR}/#{image}@#{snap_name}"
-	end
+#	if LOCAL_KEEP == 0
+#		puts "rm -f #{BACKUP_DIR}/#{image}@#{snap_name}"
+#	end
 end
+
+threads.each {|thr| thr.join}
