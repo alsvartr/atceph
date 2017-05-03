@@ -11,6 +11,7 @@ LOCAL_KEEP = 0
 BACKUP_DIR = "/home/"
 ## send snapshots to Tivoli
 USE_DSMC = true
+THREADS = Hash["max_export" => 1, "max_archive" => 5]
 
 options = {}
 OptionParser.new do |opts|
@@ -90,6 +91,7 @@ def doExport(image)
 	#puts "rbd snap create #{snap_path}"
 	#puts "[#{act_export_threads}/#{max_export_threads}] rbd export #{snap_path} #{BACKUP_DIR}/#{image}@#{snap_name}"
 	sleep 20
+	return snap_name
 end
 
 def doArchive(image)
@@ -100,40 +102,42 @@ def doArchive(image)
 end
 
 threads = []
-to_archive = []
-max_export_threads = 1
-max_dsm_threads = 5
-act_export_threads = 0
-act_dsm_threads = 0
+queue = Hash[:export => Array.new, :archive => Array.new]
+THREADS[:act_export] = 0
+THREADS[:act_archive] = 0
 
 images.each do |image, snaps|
-	snaps.sort!.reverse!
+#	snaps.sort!.reverse!
 
 	## rotate snapshots in cluster
-	while snaps.count >= SNAP_KEEP && snaps.count != 0
-		puts "rbd rm #{snaps[snaps.count-1]}"
-		snaps.delete_at(snaps.count-1)
-	end
+#	while snaps.count >= SNAP_KEEP && snaps.count != 0
+#		puts "rbd rm #{snaps[snaps.count-1]}"
+#		snaps.delete_at(snaps.count-1)
+#	end
+	queue[:export].push(image)
 
 	threads << Thread.new do
-		sleep 1 while act_export_threads >= max_export_threads
-		act_export_threads += 1
+		sleep 1 while THREADS[:act_export] >= THREADS[:max_export]
+		THREADS[:act_export] += 1
 
-		puts "[#{act_export_threads}/#{max_export_threads}] => EXPORT: #{image}"
-		doExport(image)
-		act_export_threads -= 1
-		to_archive.push(image) if USE_DSMC
+		img = queue[:export].shift
+		puts "[#{act_export_threads}/#{max_export_threads}] => EXPORT: #{img}"
+		snap = doExport(img)
+		snaps.push(snap)
+		THREADS[:act_export] -= 1
+		queue[:archive].push(img) if USE_DSMC
 	end
 
-	sleep 1 while to_archive.empty?
+	sleep 1 while queue[:archive].empty?
 
 	threads << Thread.new do
-		sleep 1 while act_dsm_threads >= max_dsm_threads
-		act_dsm_threads += 1
+		sleep 1 while THREADS[:act_archive] >= THREADS[:max_archive]
 
-		puts "[#{act_dsm_threads}/#{max_dsm_threads}] => ARCHIVE: #{image}"
-		doArchive(to_archive.shift)
-		act_dsm_threads -= 1
+		THREADS[:act_archive] += 1
+		img = queue[:archive].shift
+		puts "[#{act_dsm_threads}/#{max_dsm_threads}] => ARCHIVE: #{img}"
+		doArchive(img)
+		THREADS[:act_archive] -= 1
 	end
 
 	## remove latest snapshot if KEEP == 0
@@ -148,3 +152,12 @@ images.each do |image, snaps|
 end
 
 threads.each {|thr| thr.join}
+
+images.each do |image, snaps|
+	snaps.sort!.reverse!
+	## rotate snapshots in cluster
+	while snaps.count >= SNAP_KEEP && snaps.count != 0
+		puts "rbd rm #{snaps[snaps.count-1]}"
+		snaps.delete_at(snaps.count-1)
+	end
+end
