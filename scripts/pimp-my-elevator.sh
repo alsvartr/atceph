@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SSD_ELEVATOR="noop"
-HDD_ELEVATOR="cfq"
+HDD_ELEVATOR="deadline"
 
 for i in `ls /sys/block/`
 do
