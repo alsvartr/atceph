@@ -1,17 +1,31 @@
 #!/usr/bin/ruby
 require 'json'
 require 'optparse'
+require 'open3'
 require __dir__ + '/lib/color.rb'
+require __dir__ + '/lib/shout.rb'
 
 ## number of snapshots to keep in cluster (0 = delete snapshots after backup)
 SNAP_KEEP = 0
-## number of exported snapshots to keep in BACKUP_DIR (0 = delete files after backup)
+## number of exported snapshots to keep in EXPORT_DIR (0 = delete files after backup)
 LOCAL_KEEP = 0
 ## where to export snapshots
-BACKUP_DIR = "/home/"
-## send snapshots to Tivoli
-USE_DSMC = true
-THREADS = Hash["max_export" => 1, "max_archive" => 5]
+EXPORT_DIR = "/mnt/backup/"
+## archive command 
+ARCH_CMD = "dsmc backup -subdir=yes"
+LOCK_FILE = "/tmp/rbd-backup.lock"
+THREADS = Hash[:max_export => 1, :max_archive => 5]
+
+
+if File.exists? LOCK_FILE
+        pid = File.read(LOCK_FILE)
+        if File.exists? "/proc/#{pid}/status"
+                shout("already running, exit", "ERR")
+                exit
+        end
+end
+File.write(LOCK_FILE, Process.pid)
+
 
 options = {}
 OptionParser.new do |opts|
@@ -40,11 +54,11 @@ images = Hash[]
 begin
 	pool_exist = `rados #{ceph_args} lspools | grep -c #{options[:backup_pool]} 2>/dev/null`
 	if pool_exist.to_i == 0
-		puts "no pool with name #{options[:backup_pool]}"
+		shout( "no pool with name #{options[:backup_pool]}", "ERR" )
 		exit
 	end
 rescue Exception => e
-	puts "Error while get ceph pools: #{e}"
+	shout( "Error while get ceph pools: #{e}", "ERR" )
 	exit
 end
 
@@ -52,7 +66,7 @@ begin
 	rbd_images = `rbd #{ceph_args} --format json ls -l #{options[:backup_pool]} 2>/dev/null`
 	rbd_images = JSON.parse(rbd_images)
 rescue Exception => e
-	puts "Error parsing 'ceph ls -l' output: #{e}"
+	shout( "Error parsing 'ceph ls -l' output: #{e}", "ERR" )
 	exit
 end
 
@@ -76,30 +90,31 @@ end
 
 if images.length == 0
 	if options[:backup_image] != nil
-		puts "no image with name #{options[:backup_image]} found"
+		shout( "no image with name #{options[:backup_image]} found", "ERR" )
 	else
-		puts "no images in pool #{options[:backup_pool]} found" if options[:backup_image]
+		shout( "no images in pool #{options[:backup_pool]} found", "ERR" ) if options[:backup_image]
 	end
 	exit
 end
 
-def doExport(image)
+def doExport(pool, image, ceph_args)
 	snap_date = Time.now().strftime("%Y.%m.%d")
 	snap_name = "BKP_#{snap_date}"
-	snap_path = "vms/#{image}@#{snap_name}"
+	snap_path = "#{pool}/#{image}@#{snap_name}"
 
-	#puts "rbd snap create #{snap_path}"
-	#puts "[#{act_export_threads}/#{max_export_threads}] rbd export #{snap_path} #{BACKUP_DIR}/#{image}@#{snap_name}"
-	sleep 20
+	`rbd #{ceph_args} snap create #{snap_path}`
+	`rbd #{ceph_args} export #{snap_path} #{EXPORT_DIR}/#{image}@#{snap_name}`
 	return snap_name
 end
 
-def doArchive(image)
-	snap_date = Time.now().strftime("%Y.%m.%d")
-	snap_name = "BKP_#{snap_date}"
-	#puts "[#{act_dsm_threads}/#{max_dsm_threads}] dsmc backup -subdir=yes #{BACKUP_DIR}/#{image}@#{snap_name}"
-	sleep 120
+def doArchive(snap_file)
+	Open3.popen3("#{ARCH_CMD} #{EXPORT_DIR}/#{snap_file}") {|i,o,e,t|
+		if not t.value.success?
+			shout( "Archive function error: #{e.read}", "ERR" )
+		end
+	}
 end
+
 
 threads = []
 queue = Hash[:export => Array.new, :archive => Array.new]
@@ -107,13 +122,6 @@ THREADS[:act_export] = 0
 THREADS[:act_archive] = 0
 
 images.each do |image, snaps|
-#	snaps.sort!.reverse!
-
-	## rotate snapshots in cluster
-#	while snaps.count >= SNAP_KEEP && snaps.count != 0
-#		puts "rbd rm #{snaps[snaps.count-1]}"
-#		snaps.delete_at(snaps.count-1)
-#	end
 	queue[:export].push(image)
 
 	threads << Thread.new do
@@ -121,43 +129,55 @@ images.each do |image, snaps|
 		THREADS[:act_export] += 1
 
 		img = queue[:export].shift
-		puts "[#{act_export_threads}/#{max_export_threads}] => EXPORT: #{img}"
-		snap = doExport(img)
-		snaps.push(snap)
-		THREADS[:act_export] -= 1
-		queue[:archive].push(img) if USE_DSMC
-	end
+		shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
+		snap_name = doExport(options[:backup_pool], img, ceph_args)
 
-	sleep 1 while queue[:archive].empty?
+                if SNAP_KEEP == 0
+                        shout( "removing snapshot #{options[:backup_pool]}/#{img}@#{snap_name}" )
+                        `rbd #{ceph_args} snap rm #{options[:backup_pool]}/#{img}@#{snap_name}`
+		else
+			snaps.push(snap_name)
+                end
+
+		THREADS[:act_export] -= 1
+		queue[:archive].push("#{img}@#{snap_name}") if ARCH_CMD != ""
+	end
 
 	threads << Thread.new do
-		sleep 1 while THREADS[:act_archive] >= THREADS[:max_archive]
+		sleep 1 while THREADS[:act_archive] >= THREADS[:max_archive] || queue[:archive].empty?
 
 		THREADS[:act_archive] += 1
-		img = queue[:archive].shift
-		puts "[#{act_dsm_threads}/#{max_dsm_threads}] => ARCHIVE: #{img}"
-		doArchive(img)
+		snap_file = queue[:archive].shift
+		shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{snap_file}", "INFO", "ARCHIVE" )
+		doArchive(snap_file)
+
+                if LOCAL_KEEP == 0
+                        shout( "removing local file #{EXPORT_DIR}/#{snap_file}" )
+                        File.delete("#{EXPORT_DIR}/#{snap_file}")
+                end
+
 		THREADS[:act_archive] -= 1
 	end
-
-	## remove latest snapshot if KEEP == 0
-#	if SNAP_KEEP == 0
-#		puts "rbd snap rm #{snap_path}"
-#	end
-
-	## remove local snapshot
-#	if LOCAL_KEEP == 0
-#		puts "rm -f #{BACKUP_DIR}/#{image}@#{snap_name}"
-#	end
 end
 
 threads.each {|thr| thr.join}
 
+
+shout("starting rotate process")
 images.each do |image, snaps|
 	snaps.sort!.reverse!
 	## rotate snapshots in cluster
-	while snaps.count >= SNAP_KEEP && snaps.count != 0
-		puts "rbd rm #{snaps[snaps.count-1]}"
+	while snaps.count > SNAP_KEEP && snaps.count != 0
+		shout( "removing snapshot: #{image}@#{snaps[snaps.count-1]}" )
+		`rbd #{ceph_args} snap rm #{options[:backup_pool]}/#{image}@#{snaps[snaps.count-1]}`
 		snaps.delete_at(snaps.count-1)
+	end
+
+	## rotate local files
+	local_files = Dir["#{EXPORT_DIR}/#{image}@BKP*"].sort!.reverse!
+	while local_files.count > LOCAL_KEEP && local_files.count != 0
+		shout( "removing local file: #{local_files[local_files.count-1]}" )
+		File.delete(local_files[local_files.count-1])
+		local_files.delete_at(local_files.count-1)
 	end
 end
