@@ -45,6 +45,17 @@ class UniParser
       end
 
       def parse_cli(names, desc, next_is_val = true, merge_with = nil)
+            merge = lambda { |val|
+                  # FIXME: add dynamic hash merging
+                  if merge_with.size == 1
+                        self.merged[:"#{merge_with[0]}"] = self.cli[:"#{gsub_param}"]
+                  else
+                        self.merged[:"#{merge_with[0]}"] = Hash[] if self.merged[:"#{merge_with[0]}"].class.to_s != "Hash"
+                        self.merged[:"#{merge_with[0]}"][:"#{merge_with[1]}"] = val
+                  end
+            }
+            merge.call( self.config[:"#{merge_with[0]}"][:"#{merge_with[1]}"] ) if merge_with != nil
+
             self.cli_desc.push ( Array[names, desc, next_is_val] ) if names.size != 0
             return nil if self.cli[:free].size == 0
 
@@ -60,19 +71,8 @@ class UniParser
                   end
                   self.cli[:free].delete_at(index)
 
-                  # FIXME: add dynamic hash merging
-                  next if merge_with == nil
-                  if merge_with.size == 1
-                        self.merged[:"#{merge_with[0]}"] = self.cli[:"#{gsub_param}"]
-                  else
-                        self.merged[:"#{merge_with[0]}"] = Hash[] if self.merged[:"#{merge_with[0]}"].class.to_s != "Hash"
-                        self.merged[:"#{merge_with[0]}"][:"#{merge_with[1]}"] = self.cli[:"#{gsub_param}"]
-                  end
+                  merge.call( self.cli[:"#{gsub_param}"] ) if merge_with != nil
             end
-      end
-
-      def merge()
-            #
       end
 
       def types(val)
