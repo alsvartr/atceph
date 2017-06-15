@@ -154,8 +154,9 @@ threads.each {|thr| thr.join}
 
 
 shout("Starting rotate process")
-images.each do |image, snaps|
-	snaps.sort!.reverse!
+images.each do |image, stat|
+      snaps = stat[:snaps]
+      snaps.sort!.reverse!
 	## rotate snapshots in cluster
 	while snaps.count > parser.config[:rbd_backup][:snap_keep] && snaps.count != 0
 		shout( "removing snapshot: #{image}@#{snaps[snaps.count-1]}" )
@@ -164,7 +165,7 @@ images.each do |image, snaps|
 	end
 
 	## rotate local files
-	local_files = Dir["#{parser.config[:ceph][:export_dir]}/#{image}@BKP*"].sort!.reverse!
+	local_files = Dir["#{parser.config[:rbd_backup][:export_dir]}/#{image}@BKP*"].sort!.reverse!
 	while local_files.count > parser.config[:rbd_backup][:local_keep] && local_files.count != 0
 		shout( "removing local file: #{local_files[local_files.count-1]}" )
 		File.delete(local_files[local_files.count-1])
