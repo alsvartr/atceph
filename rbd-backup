@@ -142,8 +142,8 @@ images.each do |image_uuid, image|
             image[:archived] = true if error == nil
 
             if parser.config[:rbd_backup][:local_keep] == 0
-                  shout( "removing local file #{parser.config[:ceph][:export_dir]}/#{snap_file}" )
-                  File.delete("#{parser.config[:ceph][:export_dir]}/#{snap_file}")
+                  shout( "removing local file #{parser.config[:rbd_backup][:export_dir]}/#{snap_file}" )
+                  File.delete("#{parser.config[:rbd_backup][:export_dir]}/#{snap_file}")
             end
 
 		THREADS[:act_archive] -= 1
