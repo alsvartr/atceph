@@ -25,14 +25,15 @@ File.write(pid_file, Process.pid)
 
 
 begin
-	pools = `#{ceph_prefix}ceph #{ceph_args} osd lspools --format json 2>/dev/null`
+      pools = `#{ceph_prefix}ceph #{ceph_args} osd lspools --format json 2>/dev/null`
       pools = JSON.parse(pools)
       found = false
-      pools.each {|pool| found = true if pool == parser.cli[:pool] }
-	shout( "No pool with name '#{parser.cli[:pool]}' ", "ERR" ) && exit if not found
+      pools.each {|pool| found = true if pool["poolname"] == parser.cli[:pool] }
+      shout( "No pool with name '#{parser.cli[:pool]}' ", "ERR" ) if not found
+      exit if not found
 rescue Exception => e
-	shout( "Error while get ceph pools: #{e}", "ERR" )
-	exit
+      shout( "Error while get ceph pools: #{e}", "ERR" )
+      exit
 end
 
 begin
@@ -100,8 +101,9 @@ end
 
 threads = []
 queue = Hash[:export => Array.new, :archive => Array.new]
-THREADS[:act_export] = 0
-THREADS[:act_archive] = 0
+THREADS = Hash[:act_export => 0, :act_archive => 0]
+THREADS[:max_export] = parser.config[:rbd_backup][:max_export_threads]
+THREADS[:max_archive] = parser.config[:rbd_backup][:max_archive_threads]
 
 images.each do |image_uuid, image|
 	queue[:export].push(image_uuid)
