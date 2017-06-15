@@ -25,7 +25,7 @@ File.write(pid_file, Process.pid)
 
 
 begin
-	pools = `#{ceph_prefix} ceph #{ceph_args} osd lspools --format json 2>/dev/null`
+	pools = `#{ceph_prefix}ceph #{ceph_args} osd lspools --format json 2>/dev/null`
       pools = JSON.parse(pools)
       found = false
       pools.each {|pool| found = true if pool == parser.cli[:pool] }
@@ -36,7 +36,7 @@ rescue Exception => e
 end
 
 begin
-	rbd_images = `#{ceph_prefix} rbd #{ceph_args} --format json ls -l #{parser.cli[:pool]} 2>/dev/null`
+	rbd_images = `#{ceph_prefix}rbd #{ceph_args} --format json ls -l #{parser.cli[:pool]} 2>/dev/null`
 	rbd_images = JSON.parse(rbd_images)
 rescue Exception => e
 	shout( "Error parsing 'ceph ls -l' output: #{e}", "ERR" )
