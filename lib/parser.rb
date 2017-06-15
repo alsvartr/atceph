@@ -14,8 +14,9 @@ def doParse
 	parser.parse_cli( ["-f", "--format"], "Change output format")
 
 	ceph_args = ""
-	ceph_args = "#{ceph_args} -c #{parser.merged[:ceph][:config]}" if parser.merged.dig(:ceph, :config)
-	ceph_args = "#{ceph_args} --name #{parser.merged[:ceph][:client]}" if parser.merged.dig(:ceph, :client)
+	# FIXME: switch to dig() later
+	ceph_args = "#{ceph_args} -c #{parser.merged[:ceph][:config]}" if parser.merged.has_key?(:ceph) && parser.merged[:ceph].has_key?(:config)
+	ceph_args = "#{ceph_args} --name #{parser.merged[:ceph][:client]}" if parser.merged.has_key?(:ceph) && parser.merged[:ceph].has_key?(:client)
 
 	return parser, ceph_args
 end
