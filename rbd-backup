@@ -4,22 +4,20 @@ require 'optparse'
 require 'open3'
 require __dir__ + '/lib/color.rb'
 require __dir__ + '/lib/shout.rb'
+require __dir__ + "/lib/parseconfig.rb"
 
-## number of snapshots to keep in cluster (0 = delete snapshots after backup)
-SNAP_KEEP = 0
-## number of exported snapshots to keep in EXPORT_DIR (0 = delete files after backup)
-LOCAL_KEEP = 0
-## where to export snapshots
-EXPORT_DIR = "/mnt/backup/"
-## archive command
-ARCH_CMD = "dsmc backup -subdir=yes"
-LOCK_FILE = "/tmp/rbd-backup.lock"
-## write output to stat file
-STAT_FILE = "/tmp/rbd-backup-stat"
-THREADS = Hash[:max_export => 1, :max_archive => 5]
+###############
+# settings
+ConfigFile = ParseConfig.new()
+if File.exist?("/etc/atceph/config")
+      ConfigFile.parse_file("/etc/atceph/config")
+else
+      ConfigFile.parse_file( __dir__ + "/config" )
+end
+ConfigFile.types!
+CONFIG = ConfigFile.params
 
-
-if File.exists? LOCK_FILE
+if File.exists? CONFIG[]
         pid = File.read(LOCK_FILE)
         if File.exists? "/proc/#{pid}/status"
                 shout("already running, exit", "ERR")
@@ -48,6 +46,7 @@ end
 options[:backup_pool] = ARGV[0]
 options[:backup_image] = ARGV[1]
 
+ceph_prefix = "#{CONFIG['ceph']['cmd_prefix']} #{CONFIG.params['ceph']['bin_dir']}"
 ceph_args = ""
 ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
 ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil

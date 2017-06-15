@@ -3,31 +3,15 @@ require 'json'
 require 'optparse'
 require __dir__ + '/lib/color.rb'
 require __dir__ + '/lib/filesize.rb'
+require __dir__ + '/lib/parser.rb'
 
-options = {}
-OptionParser.new do |opts|
-	opts.banner = "Usage: cluster-df [options]"
 
-	opts.on("-c", "--config", "Use this configuration file instead of the default") do |c|
-		options[:config] = ARGV[0]
-	end
-	opts.on("-n", "--name", "Client name for authentication") do |n|
-		options[:name] = ARGV[0]
-	end
-	opts.on("-f", "--format", "Change output format") do |f|
-		options[:format] = ARGV[0]
-	end
-	opts.on("-h", "--human", "Show data in human readable format") do |b|
-		options[:human] = b
-	end
-	opts.on("-s", "--show", "Suppress normal output, show only [pools, rules, cluster] info") do |s|
-		options[:show] = ARGV[0]
-	end
-end.parse!
-
-ceph_args = ""
-ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
-ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
+parser, ceph_args = doParse
+parser.banner = "Usage: cluster-df [options]"
+parser.parse_cli( ["-hu", "--human"], "Show data in human readable format", false)
+parser.parse_cli( ["-s", "--show"], "Suppress normal output, show only [pools, rules, cluster] info")
+parser.types!
+parser.show_banner() && exit if parser.cli[:help]
 
 data = Hash["pools" => Array.new, "rules" => Array.new, "cluster" => Array.new]
 total_rbd_size = 0
@@ -71,7 +55,7 @@ def printVals(vals, human = False)
 end
 
 
-printHeader("POOLS") if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
+printHeader("POOLS") if (parser.cli[:show] == nil || parser.cli[:show] == "pools") && parser.cli[:format] == nil
 cephdf["pools"].each do |pool|
 	begin
 		rbd = `rbd #{ceph_args} --format json ls -l #{pool["name"]} 2>/dev/null`
@@ -107,7 +91,7 @@ cephdf["pools"].each do |pool|
 	total_rbd_replic_size = total_rbd_replic_size + pool_info["rbd_replic"]
 	total_raw_size = total_raw_size + pool_info["raw_size"]
 
-	printVals(pool_info, options[:human]) if (options[:show] == nil || options[:show] == "pools") && options[:format] == nil
+	printVals(pool_info, parser.cli[:human]) if (parser.cli[:show] == nil || parser.cli[:show] == "pools") && parser.cli[:format] == nil
 	data["pools"].push(pool_info)
 end
 
@@ -121,7 +105,7 @@ rescue Exception => e
 	exit
 end
 
-printHeader("RULES") if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
+printHeader("RULES") if (parser.cli[:show] == nil || parser.cli[:show] == "rules") && parser.cli[:format] == nil
 rules_json.each do |rule|
 	rule_info = Hash["name" => rule["rule_name"], "avail" => 0, "rbd_size" => 0, "rbd_replic" => 0, "rbd_perc" => 0, "raw_size" => 0, "raw_replic" => 0, "raw_perc" => 0]
 
@@ -140,7 +124,7 @@ rules_json.each do |rule|
 		end
 	end
 
-	printVals(rule_info, options[:human]) if (options[:show] == nil || options[:show] == "rules") && options[:format] == nil
+	printVals(rule_info, parser.cli[:human]) if (parser.cli[:show] == nil || parser.cli[:show] == "rules") && parser.cli[:format] == nil
 	data["rules"].push(rule_info)
 end
 
@@ -149,7 +133,7 @@ total_raw_replic = cephdf["stats"]["total_used_bytes"]
 total_rbd_perc = total_rbd_size * 100 / total_size
 total_raw_perc = total_raw_size * 100 / total_size
 
-if options[:human]
+if parser.cli[:human]
 	total_size = Filesize.do("#{total_size} B")
 	total_rbd_size = Filesize.do("#{total_rbd_size} B")
 	total_rbd_replic_size = Filesize.do("#{total_rbd_replic_size} B")
@@ -158,7 +142,7 @@ if options[:human]
 end
 
 
-if (options[:show] == nil || options[:show] == "cluster") && options[:format] == nil
+if (parser.cli[:show] == nil || parser.cli[:show] == "cluster") && parser.cli[:format] == nil
 	printHeader("CLUSTER")
 
 	total_rbd_perc = "#{total_rbd_perc} %"
@@ -169,6 +153,6 @@ if (options[:show] == nil || options[:show] == "cluster") && options[:format] ==
 	print "#{total_raw_size.to_s.ljust(20)}#{total_raw_replic.to_s.ljust(20)}#{total_raw_perc.to_s.ljust(20)}\n"
 end
 
-if options[:format] == "json"
+if parser.cli[:format] == "json"
 	puts data.to_json
 end
