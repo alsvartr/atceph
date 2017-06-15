@@ -75,6 +75,11 @@ class UniParser
             end
       end
 
+      def bound_cli(opt_name, opt_index)
+            return nil if opt_index >= self.cli[:free].size
+            self.cli[:"#{opt_name}"] = self.cli[:free][opt_index]
+      end
+
       def types(val)
             return nil if val == nil
 

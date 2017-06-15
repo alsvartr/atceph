@@ -1,69 +1,42 @@
 #!/usr/bin/ruby
 require 'json'
-require 'optparse'
 require 'open3'
 require __dir__ + '/lib/color.rb'
 require __dir__ + '/lib/shout.rb'
-require __dir__ + "/lib/parseconfig.rb"
+require __dir__ + "/lib/parser.rb"
 
-###############
-# settings
-ConfigFile = ParseConfig.new()
-if File.exist?("/etc/atceph/config")
-      ConfigFile.parse_file("/etc/atceph/config")
-else
-      ConfigFile.parse_file( __dir__ + "/config" )
+parser, ceph_args, ceph_prefix = doParse
+parser.banner = "Usage: cluster-df [options]"
+parser.parse_cli( ["-hu", "--human"], "Show data in human readable format", false)
+parser.parse_cli( ["-s", "--show"], "Suppress normal output, show only [pools, rules, cluster] info")
+parser.types!
+parser.show_banner() && exit if parser.cli[:help]
+
+parser.bound_cli(:pool, 0)
+parser.bound_cli(:image, 1)
+
+pid_file = parser.config[:general][:pid_dir] + "/rbd-backup.pid"
+if File.exists? pid_file
+        pid = File.read(pid_file)
+        pid_exist = `ps -p #{pid} -o pid= | wc -l`
+        shout("already running, exit", "ERR") && exit if pid_exist == 1
 end
-ConfigFile.types!
-CONFIG = ConfigFile.params
+File.write(pid_file, Process.pid)
 
-if File.exists? CONFIG[]
-        pid = File.read(LOCK_FILE)
-        if File.exists? "/proc/#{pid}/status"
-                shout("already running, exit", "ERR")
-                exit
-        end
-end
-File.write(LOCK_FILE, Process.pid)
-
-
-options = {}
-OptionParser.new do |opts|
-	opts.banner = "Usage: rbd-backup [options] pool [image]"
-
-	opts.on("-c", "--config", "Use this configuration file instead of the default") do |c|
-		options[:config] = ARGV[0]
-	end
-	opts.on("-n", "--name", "Client name for authentication") do |n|
-		options[:name] = ARGV[0]
-	end
-end.parse!
-
-ARGV.each do |arg|
-        ARGV.delete(arg) if options.values.include? arg
-end
-
-options[:backup_pool] = ARGV[0]
-options[:backup_image] = ARGV[1]
-
-ceph_prefix = "#{CONFIG['ceph']['cmd_prefix']} #{CONFIG.params['ceph']['bin_dir']}"
-ceph_args = ""
-ceph_args = "#{ceph_args} -c #{options[:config]}"	if options[:config] != nil
-ceph_args = "#{ceph_args} --name #{options[:name]}"	if options[:name] != nil
 
 begin
-	pool_exist = `rados #{ceph_args} lspools | grep -c #{options[:backup_pool]} 2>/dev/null`
-	if pool_exist.to_i == 0
-		shout( "no pool with name #{options[:backup_pool]}", "ERR" )
-		exit
-	end
+	pools = `#{ceph_prefix} ceph #{ceph_args} osd lspools --format json 2>/dev/null`
+      pools = JSON.parse(pools)
+      found = false
+      pools.each {|pool| found = true if pool == parser.cli[:pool] }
+	shout( "No pool with name '#{parser.cli[:pool]}' ", "ERR" ) && exit if not found
 rescue Exception => e
 	shout( "Error while get ceph pools: #{e}", "ERR" )
 	exit
 end
 
 begin
-	rbd_images = `rbd #{ceph_args} --format json ls -l #{options[:backup_pool]} 2>/dev/null`
+	rbd_images = `#{ceph_prefix} rbd #{ceph_args} --format json ls -l #{parser.cli[:pool]} 2>/dev/null`
 	rbd_images = JSON.parse(rbd_images)
 rescue Exception => e
 	shout( "Error parsing 'ceph ls -l' output: #{e}", "ERR" )
@@ -73,7 +46,7 @@ end
 images = Hash[]
 rbd_images.each do |rbd_image|
 	image_uuid = rbd_image["image"]
-	next if image_uuid != options[:backup_image] && options[:backup_image] != nil
+	next if image_uuid != parser.cli[:image] && parser.cli[:image] != nil
 
 	if images[image_uuid] == nil
 		## create new hash entry
@@ -90,30 +63,30 @@ rbd_images.each do |rbd_image|
 end
 
 if images.length == 0
-	if options[:backup_image] != nil
-		shout( "no image with name #{options[:backup_image]} found", "ERR" )
+	if parser.cli[:image] != nil
+		shout( "No image with name #{parser.cli[:image]} found", "ERR" )
 	else
-		shout( "no images in pool #{options[:backup_pool]} found", "ERR" ) if options[:backup_image]
+		shout( "No images in pool #{parser.cli[:pool]} found", "ERR" )
 	end
 	exit
 end
 
-def doExport(pool, image, ceph_args)
+def doExport(pool, image, export_dir, ceph_prefix, ceph_args)
 	snap_date = Time.now().strftime("%Y.%m.%d")
 	snap_name = "BKP_#{snap_date}"
 	snap_path = "#{pool}/#{image}@#{snap_name}"
 
       begin
-	      `rbd #{ceph_args} snap create #{snap_path}`
-            `rbd #{ceph_args} export #{snap_path} #{EXPORT_DIR}/#{image}@#{snap_name}`
+	      `#{ceph_prefix}rbd #{ceph_args} snap create #{snap_path}`
+            `#{ceph_prefix}rbd #{ceph_args} export #{snap_path} #{export_dir}/#{image}@#{snap_name}`
       rescue Exception => e
             return snap_name, e
       end
 	return snap_name, nil
 end
 
-def doArchive(snap_file)
-	Open3.popen3("#{ARCH_CMD} #{EXPORT_DIR}/#{snap_file}") {|i,o,e,t|
+def doArchive(snap_file, arch_cmd, export_dir)
+	Open3.popen3("#{arch_cmd} #{export_dir}/#{snap_file}") {|i,o,e,t|
 		if not t.value.success?
                   err = o.read if e.read.empty?
                   err = e.read if not e.read.empty?
@@ -139,20 +112,20 @@ images.each do |image_uuid, image|
 
 		img = queue[:export].shift
 		shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
-		snap_name, error = doExport(options[:backup_pool], img, ceph_args)
+		snap_name, error = doExport(parser.cli[:pool], img, parser.config[:ceph][:export_dir], ceph_prefix, ceph_args)
 
             shout( "Export function error: #{error}", "ERR" ) if error != nil
             image[:exported] = true if error == nil
 
-            if SNAP_KEEP == 0
-                  shout( "removing snapshot #{options[:backup_pool]}/#{img}@#{snap_name}" )
-                  `rbd #{ceph_args} snap rm #{options[:backup_pool]}/#{img}@#{snap_name}`
+            if parser.config[:rbd_backup][:snap_keep] == 0
+                  shout( "removing snapshot #{parser.cli[:pool]}/#{img}@#{snap_name}" )
+                  `#{ceph_prefix}rbd #{ceph_args} snap rm #{parser.cli[:pool]}/#{img}@#{snap_name}`
 		else
                   image[:snaps].push(snap_name)
             end
 
 		THREADS[:act_export] -= 1
-		queue[:archive].push("#{img}@#{snap_name}") if ARCH_CMD != ""
+		queue[:archive].push("#{img}@#{snap_name}") if parser.config[:rbd_backup][:arch_cmd] != ""
 	end
 
 	threads << Thread.new do
@@ -161,14 +134,14 @@ images.each do |image_uuid, image|
 		THREADS[:act_archive] += 1
 		snap_file = queue[:archive].shift
 		shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{snap_file}", "INFO", "ARCHIVE" )
-		error = doArchive(snap_file)
+		error = doArchive(snap_file, parser.config[:rbd_backup][:arch_cmd], parser.config[:ceph][:export_dir])
 
             shout( "Archive function error: #{error}", "ERR" ) if error != nil
             image[:archived] = true if error == nil
 
-            if LOCAL_KEEP == 0
-                  shout( "removing local file #{EXPORT_DIR}/#{snap_file}" )
-                  File.delete("#{EXPORT_DIR}/#{snap_file}")
+            if parser.config[:rbd_backup][:local_keep] == 0
+                  shout( "removing local file #{parser.config[:ceph][:export_dir]}/#{snap_file}" )
+                  File.delete("#{parser.config[:ceph][:export_dir]}/#{snap_file}")
             end
 
 		THREADS[:act_archive] -= 1
@@ -178,19 +151,19 @@ end
 threads.each {|thr| thr.join}
 
 
-shout("starting rotate process")
+shout("Starting rotate process")
 images.each do |image, snaps|
 	snaps.sort!.reverse!
 	## rotate snapshots in cluster
-	while snaps.count > SNAP_KEEP && snaps.count != 0
+	while snaps.count > parser.config[:rbd_backup][:snap_keep] && snaps.count != 0
 		shout( "removing snapshot: #{image}@#{snaps[snaps.count-1]}" )
-		`rbd #{ceph_args} snap rm #{options[:backup_pool]}/#{image}@#{snaps[snaps.count-1]}`
+		`#{ceph_prefix}rbd #{ceph_args} snap rm #{parser.cli[:pool]}/#{image}@#{snaps[snaps.count-1]}`
 		snaps.delete_at(snaps.count-1)
 	end
 
 	## rotate local files
-	local_files = Dir["#{EXPORT_DIR}/#{image}@BKP*"].sort!.reverse!
-	while local_files.count > LOCAL_KEEP && local_files.count != 0
+	local_files = Dir["#{parser.config[:ceph][:export_dir]}/#{image}@BKP*"].sort!.reverse!
+	while local_files.count > parser.config[:rbd_backup][:local_keep] && local_files.count != 0
 		shout( "removing local file: #{local_files[local_files.count-1]}" )
 		File.delete(local_files[local_files.count-1])
 		local_files.delete_at(local_files.count-1)
