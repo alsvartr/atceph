@@ -1,8 +1,14 @@
 #!/usr/bin/ruby
 require 'json'
 require __dir__ + '/lib/color.rb'
+require __dir__ + "/lib/parser.rb"
 
-@tree_json = `ceph osd tree -f json`
+parser, ceph_prefix, ceph_args = doParse
+parser.banner = "Usage: osd-tree [options]"
+parser.types!
+parser.show_banner() && exit if parser.cli[:help]
+
+@tree_json = `#{ceph_prefix}ceph #{ceph_args} osd tree --format json 2>/dev/null`
 @tree_json = JSON.parse(@tree_json)
 
 id_map = Hash.new
@@ -15,9 +21,7 @@ id_map = Hash.new
 	@types[node["type"]] = @types.length if @types.key?(node["type"]) == false
 
 	next if node["children"] == nil
-	node["children"].each do |child_id|
-		id_map[child_id] = parent
-	end
+	node["children"].each { |child_id| id_map[child_id] = parent }
 end
 
 
@@ -56,7 +60,7 @@ def getChilds(arr, node, iter)
 		child_obj = @tree_json["nodes"].select {|e| e["id"] == child["id"]}
 		child_obj = child_obj[0]
 		parent_obj = @tree_json["nodes"].select {|e| e["id"] == node["id"]}
-		parent_obj = parent_obj[0]		
+		parent_obj = parent_obj[0]
 
 		if child_obj["type"] == "osd"
 			@osd_start = true
@@ -72,7 +76,6 @@ def getChilds(arr, node, iter)
 			end
 		end
 
-#		@types[child_obj["type"]].times { |i| print "   " }
 		parent_obj = @tree_json["nodes"].select {|e| e["id"] == node["id"]}
 		type = @types[parent_obj[0]["type"]]+1
 		type.times { |i| print "   " }
@@ -93,15 +96,13 @@ roots.each do |root|
 end
 
 
-dump_json = `ceph osd dump -f json`
+dump_json = `#{ceph_prefix}ceph #{ceph_args} osd dump --format json 2>/dev/null`
 dump_json = JSON.parse(dump_json)
-rules_json = `ceph osd crush rule dump -f json`
+rules_json = `#{ceph_prefix}ceph #{ceph_args} osd crush rule dump --format json 2>/dev/null`
 rules_json = JSON.parse(rules_json)
 pools = Hash.new
 
-dump_json["pools"].each do |pool|
-	pools[pool["pool_name"]] = pool["crush_ruleset"]
-end
+dump_json["pools"].each { |pool| pools[pool["pool_name"]] = pool["crush_ruleset"] }
 puts ""
 
 rules_json.each do |rule|
