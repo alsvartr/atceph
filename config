@@ -1,0 +1,20 @@
+[general]
+lock_files = "/tmp/"
+
+[ceph]
+bin_dir = "/bin"
+cmd_prefix = ""
+config = "/etc/ceph/ceph.conf"
+client = "client.admin"
+
+[rbd-backup]
+snap_keep = 0
+local_keep = 0
+export_dir = "/mnt"
+arch_cmd = ""
+max_export_threads = 1
+max_archive_threads = 1
+stat_file = "/tmp/rbd-backup-stat"
+
+[rbd-mapper]
+map_file = "/etc/atceph/rbdmap"
