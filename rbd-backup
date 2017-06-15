@@ -5,7 +5,7 @@ require __dir__ + '/lib/color.rb'
 require __dir__ + '/lib/shout.rb'
 require __dir__ + "/lib/parser.rb"
 
-parser, ceph_args, ceph_prefix = doParse
+parser, ceph_prefix, ceph_args = doParse
 parser.banner = "Usage: cluster-df [options]"
 parser.parse_cli( ["-hu", "--human"], "Show data in human readable format", false)
 parser.parse_cli( ["-s", "--show"], "Suppress normal output, show only [pools, rules, cluster] info")
