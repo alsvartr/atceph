@@ -114,7 +114,7 @@ images.each do |image_uuid, image|
 
 		img = queue[:export].shift
 		shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
-		snap_name, error = doExport(parser.cli[:pool], img, parser.config[:ceph][:export_dir], ceph_prefix, ceph_args)
+		snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args)
 
             shout( "Export function error: #{error}", "ERR" ) if error != nil
             image[:exported] = true if error == nil
