@@ -43,14 +43,17 @@ rescue Exception => e
 	exit
 end
 
-images = Hash[]
+images = Hash[:rbd => Hash[], :total => Hash[:pool => parser.cli[:pool], :export_errors => 0, :archive_errors => 0] ]
+images[:total][:export_start] = Time.now.to_i
+images[:total][:archive_start] = Time.now.to_i
+
 rbd_images.each do |rbd_image|
 	image_uuid = rbd_image["image"]
 	next if image_uuid != parser.cli[:image] && parser.cli[:image] != nil
 
-	if images[image_uuid] == nil
+	if images[:rbd][image_uuid] == nil
 		## create new hash entry
-		images[image_uuid] = Hash[:exported => false, :archived => false, :snaps => Array.new]
+		images[:rbd][image_uuid] = Hash[:exported => false, :archived => false, :snaps => Array.new]
 	end
 
 	## current image has no snapshots
@@ -58,11 +61,11 @@ rbd_images.each do |rbd_image|
 
 	if rbd_image["snapshot"] =~ /BKP_([0-9]+\.){2}[0-9]+/
 		## found old snapshot
-		images[image_uuid][:snaps].push(rbd_image["snapshot"])
+		images[:rbd][image_uuid][:snaps].push(rbd_image["snapshot"])
 	end
 end
 
-if images.length == 0
+if images[:rbd].size == 0
 	if parser.cli[:image] != nil
 		shout( "No image with name #{parser.cli[:image]} found", "ERR" )
 	else
@@ -104,7 +107,7 @@ THREADS = Hash[:act_export => 0, :act_archive => 0]
 THREADS[:max_export] = parser.config[:rbd_backup][:max_export_threads]
 THREADS[:max_archive] = parser.config[:rbd_backup][:max_archive_threads]
 
-images.each do |image_uuid, image|
+images[:rbd].each do |image_uuid, image|
 	queue[:export].push(image_uuid)
 
 	threads << Thread.new do
@@ -113,10 +116,13 @@ images.each do |image_uuid, image|
 
 		img = queue[:export].shift
 		shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
+            image[:export_start] = Time.now.to_i
 		snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args)
 
-            shout( "Export function error: #{error}", "ERR" ) if error != nil
+            image[:export_end] = Time.now.to_i
             image[:exported] = true if error == nil
+            images[:total][:export_errors] += 1 if error != nil
+            shout( "Export function error: #{error}", "ERR" ) if error != nil
 
             if parser.config[:rbd_backup][:snap_keep] == 0
                   shout( "removing snapshot #{parser.cli[:pool]}/#{img}@#{snap_name}" )
@@ -131,14 +137,17 @@ images.each do |image_uuid, image|
 
 	threads << Thread.new do
 		sleep 1 while THREADS[:act_archive] >= THREADS[:max_archive] || queue[:archive].empty?
+            THREADS[:act_archive] += 1
 
-		THREADS[:act_archive] += 1
 		snap_file = queue[:archive].shift
 		shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{snap_file}", "INFO", "ARCHIVE" )
-		error = doArchive(snap_file, parser.config[:rbd_backup][:arch_cmd], parser.config[:ceph][:export_dir])
+            image[:archive_start] = Time.now.to_i
+            error = doArchive(snap_file, parser.config[:rbd_backup][:arch_cmd], parser.config[:ceph][:export_dir])
 
-            shout( "Archive function error: #{error}", "ERR" ) if error != nil
+            image[:archive_end] = Time.now.to_i
             image[:archived] = true if error == nil
+            images[:total][:archive_errors] += 1 if error != nil
+            shout( "Archive function error: #{error}", "ERR" ) if error != nil
 
             if parser.config[:rbd_backup][:local_keep] == 0
                   shout( "removing local file #{parser.config[:rbd_backup][:export_dir]}/#{snap_file}" )
@@ -149,13 +158,15 @@ images.each do |image_uuid, image|
 	end
 end
 
+images[:total][:export_end] = Time.now.to_i
 threads.each {|thr| thr.join}
-
+images[:total][:archive_end] = Time.now.to_i
 
 shout("Starting rotate process")
-images.each do |image, stat|
+images[:rbd].each do |image, stat|
       snaps = stat[:snaps]
       snaps.sort!.reverse!
+
 	## rotate snapshots in cluster
 	while snaps.count > parser.config[:rbd_backup][:snap_keep] && snaps.count != 0
 		shout( "removing snapshot: #{image}@#{snaps[snaps.count-1]}" )
@@ -171,3 +182,5 @@ images.each do |image, stat|
 		local_files.delete_at(local_files.count-1)
 	end
 end
+
+File.write(parser[:config][:stat_file], images.to_json)
