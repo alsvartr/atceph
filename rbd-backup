@@ -131,6 +131,7 @@ images[:rbd].each do |image_uuid, image|
                   image[:snaps].push(snap_name)
             end
 
+            images[:total][:export_end] = Time.now.to_i
 		THREADS[:act_export] -= 1
 		queue[:archive].push("#{img}@#{snap_name}") if parser.config[:rbd_backup][:arch_cmd] != ""
 	end
@@ -158,7 +159,7 @@ images[:rbd].each do |image_uuid, image|
 	end
 end
 
-images[:total][:export_end] = Time.now.to_i
+
 threads.each {|thr| thr.join}
 images[:total][:archive_end] = Time.now.to_i
 
@@ -183,4 +184,4 @@ images[:rbd].each do |image, stat|
 	end
 end
 
-File.write(parser[:config][:stat_file], images.to_json)
+File.write(parser.config[:rbd_backup][:stat_file], images.to_json)
