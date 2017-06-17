@@ -1,0 +1,10 @@
+[Unit]
+Description=Ceph RBD mapper
+Wants=network-online.target
+After=network.target network-online.target
+
+[Service]
+Type=forking
+ExecStart=/opt/ceph/scripts/rbd-mapper.sh
+User=root
+Group=root
