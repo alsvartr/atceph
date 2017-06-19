@@ -1,4 +1,4 @@
-#!/usr/bin/ruby
+      #!/usr/bin/ruby
 require 'json'
 require 'open3'
 require __dir__ + '/lib/color.rb'
@@ -23,6 +23,7 @@ File.write(pid_file, Process.pid)
 
 
 begin
+      ## get ceph pools
       pools = `#{ceph_prefix}ceph #{ceph_args} osd lspools --format json 2>/dev/null`
       pools = JSON.parse(pools)
       found = false
@@ -35,27 +36,29 @@ rescue Exception => e
 end
 
 begin
-	rbd_images = `#{ceph_prefix}rbd #{ceph_args} --format json ls -l #{parser.cli[:pool]} 2>/dev/null`
-	rbd_images = JSON.parse(rbd_images)
+      ## get ceph volumes in pool
+      rbd_images = `#{ceph_prefix}rbd #{ceph_args} --format json ls -l #{parser.cli[:pool]} 2>/dev/null`
+      rbd_images = JSON.parse(rbd_images)
 rescue Exception => e
-	shout( "Error parsing 'ceph ls -l' output: #{e}", "ERR" )
-	exit
+      shout( "Error parsing 'ceph ls -l' output: #{e}", "ERR" )
+      exit
 end
 
+## init resulting hash
 images = Hash[:rbd => Hash[], :total => Hash[:pool => parser.cli[:pool], :export_errors => 0, :archive_errors => 0] ]
 images[:total][:export_start] = Time.now.to_i
 images[:total][:archive_start] = Time.now.to_i
 
 rbd_images.each do |rbd_image|
+      ## loop through volumes
       image_uuid = rbd_image["image"]
       next if image_uuid != parser.cli[:image] && parser.cli[:image] != nil
 
       if images[:rbd][image_uuid] == nil
-            ## create new hash entry
             images[:rbd][image_uuid] = Hash[:exported => false, :archived => false, :snaps => Array.new]
       end
 
-      ## current image has no snapshots
+      ## current volume has no snapshots
       next if rbd_image["snapshot"] == nil
 
       if rbd_image["snapshot"] =~ /BKP_([0-9]+\.){2}[0-9]+/
@@ -65,8 +68,9 @@ rbd_images.each do |rbd_image|
 end
 
 if images[:rbd].size == 0
+      ## check pool/volume existense
       if parser.cli[:image] != nil
-            shout( "No image with name #{parser.cli[:image]} found", "ERR" )
+            shout( "No volume with name #{parser.cli[:image]} found", "ERR" )
       else
             shout( "No images in pool #{parser.cli[:pool]} found", "ERR" )
       end
@@ -79,6 +83,7 @@ def doExport(pool, image, export_dir, ceph_prefix, ceph_args)
       snap_path = "#{pool}/#{image}@#{snap_name}"
 
       begin
+            ## actual export code
             `#{ceph_prefix}rbd #{ceph_args} snap create #{snap_path}`
             `#{ceph_prefix}rbd #{ceph_args} export #{snap_path} #{export_dir}/#{image}@#{snap_name}`
       rescue Exception => e
@@ -88,6 +93,7 @@ def doExport(pool, image, export_dir, ceph_prefix, ceph_args)
 end
 
 def doArchive(snap_file, arch_cmd, export_dir)
+      ## actual archiving code
       Open3.popen3("#{arch_cmd} #{export_dir}/#{snap_file}") {|i,o,e,t|
             if not t.value.success?
                   err = o.read if e.read.empty?
@@ -100,6 +106,7 @@ def doArchive(snap_file, arch_cmd, export_dir)
 end
 
 
+## init threads structures
 threads = []
 queue = Hash[:export => Array.new, :archive => Array.new]
 THREADS = Hash[:act_export => 0, :act_archive => 0]
@@ -107,12 +114,16 @@ THREADS[:max_export] = parser.config[:rbd_backup][:max_export_threads]
 THREADS[:max_archive] = parser.config[:rbd_backup][:max_archive_threads]
 
 images[:rbd].each do |image_uuid, image|
+      ## first push each volume to export queue
       queue[:export].push(image_uuid)
 
+      ## main export threading facility. FIXME: refactor this
       threads << Thread.new do
+            ## wait if we reached MAX_EXPORT threads count
             sleep 1 while THREADS[:act_export] >= THREADS[:max_export]
             THREADS[:act_export] += 1
 
+            ## start export
             img = queue[:export].shift
             shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
             image[:export_start] = Time.now.to_i
@@ -123,6 +134,7 @@ images[:rbd].each do |image_uuid, image|
             images[:total][:export_errors] += 1 if error != nil
             shout( "Export function error: #{error}", "ERR" ) if error != nil
 
+            ## remove snapshot in place if SNAP_KEEP is set to 0
             if parser.config[:rbd_backup][:snap_keep] == 0
                   shout( "removing snapshot #{parser.cli[:pool]}/#{img}@#{snap_name}" )
                   `#{ceph_prefix}rbd #{ceph_args} snap rm #{parser.cli[:pool]}/#{img}@#{snap_name}`
@@ -132,13 +144,17 @@ images[:rbd].each do |image_uuid, image|
 
             images[:total][:export_end] = Time.now.to_i
             THREADS[:act_export] -= 1
+            ## add volume to export queue
             queue[:archive].push("#{img}@#{snap_name}") if parser.config[:rbd_backup][:arch_cmd] != ""
       end
 
+      ## main archive threading facility. FIXME: refactor this
       threads << Thread.new do
+            ## wait if we reached MAX_ARCHIVE threads count or queue is empty
             sleep 1 while THREADS[:act_archive] >= THREADS[:max_archive] || queue[:archive].empty?
             THREADS[:act_archive] += 1
 
+            ## start archiving
             snap_file = queue[:archive].shift
             shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{snap_file}", "INFO", "ARCHIVE" )
             image[:archive_start] = Time.now.to_i
@@ -149,6 +165,7 @@ images[:rbd].each do |image_uuid, image|
             images[:total][:archive_errors] += 1 if error != nil
             shout( "Archive function error: #{error}", "ERR" ) if error != nil
 
+            ## remove exported file in place if LOCAL_KEEP is set to 0
             if parser.config[:rbd_backup][:local_keep] == 0
                   shout( "removing local file #{parser.config[:rbd_backup][:export_dir]}/#{snap_file}" )
                   File.delete("#{parser.config[:rbd_backup][:export_dir]}/#{snap_file}")
@@ -183,4 +200,5 @@ images[:rbd].each do |image, stat|
       end
 end
 
+## write statistics
 File.write(parser.config[:rbd_backup][:stat_file], images.to_json)
