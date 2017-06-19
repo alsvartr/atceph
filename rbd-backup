@@ -7,7 +7,6 @@ require __dir__ + "/lib/parser.rb"
 
 parser, ceph_prefix, ceph_args = doParse
 parser.banner = "Usage: rbd-backup [options] pool [volume]"
-parser.parse_cli( ["-hu", "--human"], "Show data in human readable format", false)
 parser.types!
 parser.show_banner() && exit if parser.cli[:help]
 
@@ -48,56 +47,56 @@ images[:total][:export_start] = Time.now.to_i
 images[:total][:archive_start] = Time.now.to_i
 
 rbd_images.each do |rbd_image|
-	image_uuid = rbd_image["image"]
-	next if image_uuid != parser.cli[:image] && parser.cli[:image] != nil
+      image_uuid = rbd_image["image"]
+      next if image_uuid != parser.cli[:image] && parser.cli[:image] != nil
 
-	if images[:rbd][image_uuid] == nil
-		## create new hash entry
-		images[:rbd][image_uuid] = Hash[:exported => false, :archived => false, :snaps => Array.new]
-	end
+      if images[:rbd][image_uuid] == nil
+            ## create new hash entry
+            images[:rbd][image_uuid] = Hash[:exported => false, :archived => false, :snaps => Array.new]
+      end
 
-	## current image has no snapshots
-	next if rbd_image["snapshot"] == nil
+      ## current image has no snapshots
+      next if rbd_image["snapshot"] == nil
 
-	if rbd_image["snapshot"] =~ /BKP_([0-9]+\.){2}[0-9]+/
-		## found old snapshot
-		images[:rbd][image_uuid][:snaps].push(rbd_image["snapshot"])
-	end
+      if rbd_image["snapshot"] =~ /BKP_([0-9]+\.){2}[0-9]+/
+            ## found old snapshot
+            images[:rbd][image_uuid][:snaps].push(rbd_image["snapshot"])
+      end
 end
 
 if images[:rbd].size == 0
-	if parser.cli[:image] != nil
-		shout( "No image with name #{parser.cli[:image]} found", "ERR" )
-	else
-		shout( "No images in pool #{parser.cli[:pool]} found", "ERR" )
-	end
-	exit
+      if parser.cli[:image] != nil
+            shout( "No image with name #{parser.cli[:image]} found", "ERR" )
+      else
+            shout( "No images in pool #{parser.cli[:pool]} found", "ERR" )
+      end
+      exit
 end
 
 def doExport(pool, image, export_dir, ceph_prefix, ceph_args)
-	snap_date = Time.now().strftime("%Y.%m.%d")
-	snap_name = "BKP_#{snap_date}"
-	snap_path = "#{pool}/#{image}@#{snap_name}"
+      snap_date = Time.now().strftime("%Y.%m.%d")
+      snap_name = "BKP_#{snap_date}"
+      snap_path = "#{pool}/#{image}@#{snap_name}"
 
       begin
-	      `#{ceph_prefix}rbd #{ceph_args} snap create #{snap_path}`
+            `#{ceph_prefix}rbd #{ceph_args} snap create #{snap_path}`
             `#{ceph_prefix}rbd #{ceph_args} export #{snap_path} #{export_dir}/#{image}@#{snap_name}`
       rescue Exception => e
             return snap_name, e
       end
-	return snap_name, nil
+      return snap_name, nil
 end
 
 def doArchive(snap_file, arch_cmd, export_dir)
-	Open3.popen3("#{arch_cmd} #{export_dir}/#{snap_file}") {|i,o,e,t|
-		if not t.value.success?
+      Open3.popen3("#{arch_cmd} #{export_dir}/#{snap_file}") {|i,o,e,t|
+            if not t.value.success?
                   err = o.read if e.read.empty?
                   err = e.read if not e.read.empty?
                   return err
             else
                   return nil
-		end
-	}
+            end
+      }
 end
 
 
@@ -108,16 +107,16 @@ THREADS[:max_export] = parser.config[:rbd_backup][:max_export_threads]
 THREADS[:max_archive] = parser.config[:rbd_backup][:max_archive_threads]
 
 images[:rbd].each do |image_uuid, image|
-	queue[:export].push(image_uuid)
+      queue[:export].push(image_uuid)
 
-	threads << Thread.new do
-		sleep 1 while THREADS[:act_export] >= THREADS[:max_export]
-		THREADS[:act_export] += 1
+      threads << Thread.new do
+            sleep 1 while THREADS[:act_export] >= THREADS[:max_export]
+            THREADS[:act_export] += 1
 
-		img = queue[:export].shift
-		shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
+            img = queue[:export].shift
+            shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
             image[:export_start] = Time.now.to_i
-		snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args)
+            snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args)
 
             image[:export_end] = Time.now.to_i
             image[:exported] = true if error == nil
@@ -127,23 +126,23 @@ images[:rbd].each do |image_uuid, image|
             if parser.config[:rbd_backup][:snap_keep] == 0
                   shout( "removing snapshot #{parser.cli[:pool]}/#{img}@#{snap_name}" )
                   `#{ceph_prefix}rbd #{ceph_args} snap rm #{parser.cli[:pool]}/#{img}@#{snap_name}`
-		else
+            else
                   image[:snaps].push(snap_name)
             end
 
             images[:total][:export_end] = Time.now.to_i
-		THREADS[:act_export] -= 1
-		queue[:archive].push("#{img}@#{snap_name}") if parser.config[:rbd_backup][:arch_cmd] != ""
-	end
+            THREADS[:act_export] -= 1
+            queue[:archive].push("#{img}@#{snap_name}") if parser.config[:rbd_backup][:arch_cmd] != ""
+      end
 
-	threads << Thread.new do
-		sleep 1 while THREADS[:act_archive] >= THREADS[:max_archive] || queue[:archive].empty?
+      threads << Thread.new do
+            sleep 1 while THREADS[:act_archive] >= THREADS[:max_archive] || queue[:archive].empty?
             THREADS[:act_archive] += 1
 
-		snap_file = queue[:archive].shift
-		shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{snap_file}", "INFO", "ARCHIVE" )
+            snap_file = queue[:archive].shift
+            shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{snap_file}", "INFO", "ARCHIVE" )
             image[:archive_start] = Time.now.to_i
-            error = doArchive(snap_file, parser.config[:rbd_backup][:arch_cmd], parser.config[:ceph][:export_dir])
+            error = doArchive(snap_file, parser.config[:rbd_backup][:arch_cmd], parser.config[:rbd_backup][:export_dir])
 
             image[:archive_end] = Time.now.to_i
             image[:archived] = true if error == nil
@@ -155,8 +154,8 @@ images[:rbd].each do |image_uuid, image|
                   File.delete("#{parser.config[:rbd_backup][:export_dir]}/#{snap_file}")
             end
 
-		THREADS[:act_archive] -= 1
-	end
+            THREADS[:act_archive] -= 1
+      end
 end
 
 
@@ -168,20 +167,20 @@ images[:rbd].each do |image, stat|
       snaps = stat[:snaps]
       snaps.sort!.reverse!
 
-	## rotate snapshots in cluster
-	while snaps.count > parser.config[:rbd_backup][:snap_keep] && snaps.count != 0
-		shout( "removing snapshot: #{image}@#{snaps[snaps.count-1]}" )
-		`#{ceph_prefix}rbd #{ceph_args} snap rm #{parser.cli[:pool]}/#{image}@#{snaps[snaps.count-1]}`
-		snaps.delete_at(snaps.count-1)
-	end
+      ## rotate snapshots in cluster
+      while snaps.count > parser.config[:rbd_backup][:snap_keep] && snaps.count != 0
+            shout( "removing snapshot: #{image}@#{snaps[snaps.count-1]}" )
+            `#{ceph_prefix}rbd #{ceph_args} snap rm #{parser.cli[:pool]}/#{image}@#{snaps[snaps.count-1]}`
+            snaps.delete_at(snaps.count-1)
+      end
 
-	## rotate local files
-	local_files = Dir["#{parser.config[:rbd_backup][:export_dir]}/#{image}@BKP*"].sort!.reverse!
-	while local_files.count > parser.config[:rbd_backup][:local_keep] && local_files.count != 0
-		shout( "removing local file: #{local_files[local_files.count-1]}" )
-		File.delete(local_files[local_files.count-1])
-		local_files.delete_at(local_files.count-1)
-	end
+      ## rotate local files
+      local_files = Dir["#{parser.config[:rbd_backup][:export_dir]}/#{image}@BKP*"].sort!.reverse!
+      while local_files.count > parser.config[:rbd_backup][:local_keep] && local_files.count != 0
+            shout( "removing local file: #{local_files[local_files.count-1]}" )
+            File.delete(local_files[local_files.count-1])
+            local_files.delete_at(local_files.count-1)
+      end
 end
 
 File.write(parser.config[:rbd_backup][:stat_file], images.to_json)
