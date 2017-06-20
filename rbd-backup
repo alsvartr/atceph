@@ -1,4 +1,4 @@
-      #!/usr/bin/ruby
+#!/usr/bin/ruby
 require 'json'
 require 'open3'
 require __dir__ + '/lib/color.rb'
@@ -79,7 +79,7 @@ end
 
 def doExport(pool, image, export_dir, ceph_prefix, ceph_args, export_fname)
       snap_date = Time.now().strftime("%Y.%m.%d")
-      fname = fname.gsub("$POOL", pool).gsub("$VOLUME", image)
+      fname = export_fname.gsub("$POOL", pool).gsub("$VOLUME", image)
       fname = Time.now().strftime(fname)
       snap_name = "BKP_#{snap_date}"
       snap_path = "#{pool}/#{image}@#{snap_name}"
@@ -89,9 +89,9 @@ def doExport(pool, image, export_dir, ceph_prefix, ceph_args, export_fname)
             `#{ceph_prefix}rbd #{ceph_args} snap create #{snap_path}`
             `#{ceph_prefix}rbd #{ceph_args} export #{snap_path} #{export_dir}/#{fname}`
       rescue Exception => e
-            return snap_name, e
+            return fname, snap_name, e
       end
-      return snap_name, nil
+      return fname, snap_name, nil
 end
 
 def doArchive(snap_file, arch_cmd, export_dir)
@@ -129,7 +129,7 @@ images[:rbd].each do |image_uuid, image|
             img = queue[:export].shift
             shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
             image[:export_start] = Time.now.to_i
-            snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args, parser.config[:rbd_backup][:export_fname])
+            fname, snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args, parser.config[:rbd_backup][:export_fname])
 
             image[:export_end] = Time.now.to_i
             image[:exported] = true if error == nil
