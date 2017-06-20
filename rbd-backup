@@ -77,15 +77,17 @@ if images[:rbd].size == 0
       exit
 end
 
-def doExport(pool, image, export_dir, ceph_prefix, ceph_args)
+def doExport(pool, image, export_dir, ceph_prefix, ceph_args, export_fname)
       snap_date = Time.now().strftime("%Y.%m.%d")
+      fname = fname.gsub("$POOL", pool).gsub("$VOLUME", image)
+      fname = Time.now().strftime(fname)
       snap_name = "BKP_#{snap_date}"
       snap_path = "#{pool}/#{image}@#{snap_name}"
 
       begin
             ## actual export code
             `#{ceph_prefix}rbd #{ceph_args} snap create #{snap_path}`
-            `#{ceph_prefix}rbd #{ceph_args} export #{snap_path} #{export_dir}/#{image}@#{snap_name}`
+            `#{ceph_prefix}rbd #{ceph_args} export #{snap_path} #{export_dir}/#{fname}`
       rescue Exception => e
             return snap_name, e
       end
@@ -127,7 +129,7 @@ images[:rbd].each do |image_uuid, image|
             img = queue[:export].shift
             shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
             image[:export_start] = Time.now.to_i
-            snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args)
+            snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args, parser.config[:rbd_backup][:export_fname])
 
             image[:export_end] = Time.now.to_i
             image[:exported] = true if error == nil
@@ -145,7 +147,7 @@ images[:rbd].each do |image_uuid, image|
             images[:total][:export_end] = Time.now.to_i
             THREADS[:act_export] -= 1
             ## add volume to export queue
-            queue[:archive].push("#{img}@#{snap_name}") if parser.config[:rbd_backup][:arch_cmd] != ""
+            queue[:archive].push( fname ) if parser.config[:rbd_backup][:arch_cmd] != ""
       end
 
       ## main archive threading facility. FIXME: refactor this
@@ -155,10 +157,10 @@ images[:rbd].each do |image_uuid, image|
             THREADS[:act_archive] += 1
 
             ## start archiving
-            snap_file = queue[:archive].shift
-            shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{snap_file}", "INFO", "ARCHIVE" )
+            fname = queue[:archive].shift
+            shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] fname", "INFO", "ARCHIVE" )
             image[:archive_start] = Time.now.to_i
-            error = doArchive(snap_file, parser.config[:rbd_backup][:arch_cmd], parser.config[:rbd_backup][:export_dir])
+            error = doArchive(fname, parser.config[:rbd_backup][:arch_cmd], parser.config[:rbd_backup][:export_dir])
 
             image[:archive_end] = Time.now.to_i
             image[:archived] = true if error == nil
@@ -167,8 +169,8 @@ images[:rbd].each do |image_uuid, image|
 
             ## remove exported file in place if LOCAL_KEEP is set to 0
             if parser.config[:rbd_backup][:local_keep] == 0
-                  shout( "removing local file #{parser.config[:rbd_backup][:export_dir]}/#{snap_file}" )
-                  File.delete("#{parser.config[:rbd_backup][:export_dir]}/#{snap_file}")
+                  shout( "removing local file #{parser.config[:rbd_backup][:export_dir]}/#{fname}" )
+                  File.delete("#{parser.config[:rbd_backup][:export_dir]}/#{fname}")
             end
 
             THREADS[:act_archive] -= 1
@@ -192,7 +194,7 @@ images[:rbd].each do |image, stat|
       end
 
       ## rotate local files
-      local_files = Dir["#{parser.config[:rbd_backup][:export_dir]}/#{image}@BKP*"].sort!.reverse!
+      local_files = Dir["#{parser.config[:rbd_backup][:export_dir]}/*#{image}*"].sort!.reverse!
       while local_files.count > parser.config[:rbd_backup][:local_keep] && local_files.count != 0
             shout( "removing local file: #{local_files[local_files.count-1]}" )
             File.delete(local_files[local_files.count-1])

@@ -3,14 +3,19 @@ pid_dir = "/tmp/"
 
 [ceph]
 bin_dir = "/bin"
+# prefix calls to ceph binaries with this
 cmd_prefix = ""
 config = "/etc/ceph/ceph.conf"
 client = "client.admin"
 
 [rbd_backup]
+# number of snapshots to keep in cluster (0 - remove right after export)
 snap_keep = 0
+# number of local files to keep in fs (0 - remove right after)
 local_keep = 0
 export_dir = "/mnt"
+# exported filename format (accepted vars: $POOL, $VOLUME)
+export_fname = "$VOLUME@BKP_%Y.%m.%d"
 arch_cmd = ""
 max_export_threads = 1
 max_archive_threads = 1
