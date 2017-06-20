@@ -158,7 +158,7 @@ images[:rbd].each do |image_uuid, image|
 
             ## start archiving
             fname = queue[:archive].shift
-            shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] fname", "INFO", "ARCHIVE" )
+            shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{fname}", "INFO", "ARCHIVE" )
             image[:archive_start] = Time.now.to_i
             error = doArchive(fname, parser.config[:rbd_backup][:arch_cmd], parser.config[:rbd_backup][:export_dir])
 
