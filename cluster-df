@@ -40,7 +40,7 @@ def printVals(vals, human = False)
 			next
 		end
 		if key =~ /perc/
-			str = "#{val} %".red    if val <= 100 && val >= 50
+			str = "#{val} %".red    if val >= 50
 			str = "#{val} %".brown  if val <= 50 && val >= 20
 			str = "#{val} %".green  if val <= 20
 			print "#{str.to_s.ljust(29)}"
