@@ -15,9 +15,10 @@ parser.bound_cli(:image, 1)
 
 pid_file = parser.config[:general][:pid_dir] + "/rbd-backup.pid"
 if File.exists? pid_file
-        pid = File.read(pid_file)
-        pid_exist = `ps -p #{pid} -o pid= | wc -l`
-        shout("already running, exit", "ERR") && exit if pid_exist == 1
+        pid = File.read(pid_file).strip
+        pid_exist = `ps -p #{pid} -o pid= | wc -l`.strip.to_i
+        shout("already running, exit", "ERR") if pid_exist == 1
+        exit if pid_exist == 1
 end
 File.write(pid_file, Process.pid)
 
