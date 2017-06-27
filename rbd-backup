@@ -170,7 +170,11 @@ images[:rbd].each do |image_uuid, image|
             ## remove exported file in place if LOCAL_KEEP is set to 0
             if parser.config[:rbd_backup][:local_keep] == 0
                   shout( "removing local file #{parser.config[:rbd_backup][:export_dir]}/#{fname}" )
-                  File.delete("#{parser.config[:rbd_backup][:export_dir]}/#{fname}")
+                  begin
+                        File.delete("#{parser.config[:rbd_backup][:export_dir]}/#{fname}")
+                  rescue Exception => e
+                        shout("error removing file #{parser.config[:rbd_backup][:export_dir]}/#{fname}: #{e}", "ERR")
+                  end
             end
 
             THREADS[:act_archive] -= 1
