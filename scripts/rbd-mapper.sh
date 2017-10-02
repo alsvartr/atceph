@@ -23,7 +23,10 @@ while read DEV PARAMS; do
       esac
 
       if [ ! -b /dev/rbd/$DEV ]; then
-            echo "rbd map -c ${CONFIG} -n ${CLIENT} $DEV"
-            rbd map -c ${CONFIG} -n ${CLIENT} $DEV
+            logger -s -t rbd-mapper "rbd map -c ${CONFIG} -n ${CLIENT} $DEV"
+            map=`rbd map -c ${CONFIG} -n ${CLIENT} $DEV 2>&1`
+            logger -s -t rbd-mapper $map
+      else
+            logger -s -t rbd-mapper "device $DEV already mapped"
       fi
 done < $MAP_FILE
