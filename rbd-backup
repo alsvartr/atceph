@@ -1,8 +1,8 @@
 #!/usr/bin/ruby
-require 'json'
-require 'open3'
-require __dir__ + '/lib/color.rb'
-require __dir__ + '/lib/shout.rb'
+require "json"
+require "open3"
+require __dir__ + "/lib/color.rb"
+require __dir__ + "/lib/shout.rb"
 require __dir__ + "/lib/parser.rb"
 
 parser, ceph_prefix, ceph_args = doParse
@@ -50,10 +50,16 @@ images = Hash[:rbd => Hash[], :total => Hash[:pool => parser.cli[:pool], :export
 images[:total][:export_start] = Time.now.to_i
 images[:total][:archive_start] = Time.now.to_i
 
+exclude_file = parser.config[:rbd_backup][:exclude_file]
+exclude_file = __dir__ + "etc/exclude" if exclude_file == "etc/exclude"
+excludes = ""
+excludes = File.read(exclude_file) if File.exists? exclude_file
+
 rbd_images.each do |rbd_image|
       ## loop through volumes
       image_uuid = rbd_image["image"]
       next if image_uuid != parser.cli[:image] && parser.cli[:image] != nil
+      next if excludes =~ /#{image_uuid}/
 
       if images[:rbd][image_uuid] == nil
             images[:rbd][image_uuid] = Hash[:exported => false, :archived => false, :snaps => Array.new]
@@ -67,6 +73,7 @@ rbd_images.each do |rbd_image|
             images[:rbd][image_uuid][:snaps].push(rbd_image["snapshot"])
       end
 end
+excludes = nil
 
 if images[:rbd].size == 0
       ## check pool/volume existense

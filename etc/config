@@ -19,6 +19,7 @@ export_fname = "$VOLUME@BKP_%Y.%m.%d"
 arch_cmd = ""
 max_export_threads = 1
 max_archive_threads = 1
+exclude_file = "etc/exclude"
 stat_file = "/tmp/rbd-backup-stat"
 
 [rbd_mapper]
