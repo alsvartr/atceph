@@ -22,4 +22,4 @@ max_archive_threads = 1
 stat_file = "/tmp/rbd-backup-stat"
 
 [rbd_mapper]
-map_file = "scripts/rbdmap"
+map_file = "etc/rbdmap"

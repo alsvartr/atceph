@@ -4,7 +4,7 @@ def doParse
 	if File.exist?("/etc/atceph/config")
 		parser = UniParser.new("/etc/atceph/config")
 	else
-		parser = UniParser.new( __dir__ + "/../config" )
+		parser = UniParser.new( __dir__ + "/../etc/config" )
 	end
 
 	parser.parse_all()
