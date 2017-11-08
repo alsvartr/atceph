@@ -51,7 +51,7 @@ images[:total][:export_start] = Time.now.to_i
 images[:total][:archive_start] = Time.now.to_i
 
 exclude_file = parser.config[:rbd_backup][:exclude_file]
-exclude_file = __dir__ + "etc/exclude" if exclude_file == "etc/exclude"
+exclude_file = __dir__ + "/etc/exclude" if exclude_file == "etc/exclude"
 excludes = ""
 excludes = File.read(exclude_file) if File.exists? exclude_file
 
