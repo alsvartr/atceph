@@ -1,3 +1,1 @@
-# RbdDevice
-pool/rbd1
-pool/rbd2
+# volumes that has to be mapped, one per line: pool/volume
