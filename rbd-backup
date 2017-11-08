@@ -46,7 +46,7 @@ rescue Exception => e
 end
 
 ## init resulting hash
-images = Hash[:rbd => Hash[], :total => Hash[:pool => parser.cli[:pool], :export_errors => 0, :archive_errors => 0] ]
+images = Hash[:rbd => Hash[], :total => Hash[:pool => parser.cli[:pool], :count => 0, :exported => 0, :archived => 0, :export_errors => 0, :archive_errors => 0] ]
 images[:total][:export_start] = Time.now.to_i
 images[:total][:archive_start] = Time.now.to_i
 
@@ -75,7 +75,8 @@ rbd_images.each do |rbd_image|
 end
 excludes = nil
 
-if images[:rbd].size == 0
+images[:total][:count] = images[:rbd].size
+if images[:total][:count] == 0
       ## check pool/volume existense
       if parser.cli[:image] != nil
             shout( "No volume with name #{parser.cli[:image]} found", "ERR" )
@@ -135,7 +136,7 @@ images[:rbd].each do |image_uuid, image|
 
             ## start export
             img = queue[:export].shift
-            shout( "[#{THREADS[:act_export]}/#{THREADS[:max_export]}] #{img}", "INFO", "EXPORT" )
+            shout( "[#{THREADS[:act_export]}/#{images[:total][:exported]}/#{images[:total][:count]}] #{img}", "INFO", "EXPORT" )
             image[:export_start] = Time.now.to_i
             fname, snap_name, error = doExport(parser.cli[:pool], img, parser.config[:rbd_backup][:export_dir], ceph_prefix, ceph_args, parser.config[:rbd_backup][:export_fname])
 
@@ -154,7 +155,8 @@ images[:rbd].each do |image_uuid, image|
 
             images[:total][:export_end] = Time.now.to_i
             THREADS[:act_export] -= 1
-            ## add volume to export queue
+            images[:total][:exported] += 1
+            ## add volume to archive queue
             queue[:archive].push( fname ) if parser.config[:rbd_backup][:arch_cmd] != ""
       end
 
@@ -166,7 +168,7 @@ images[:rbd].each do |image_uuid, image|
 
             ## start archiving
             fname = queue[:archive].shift
-            shout( "[#{THREADS[:act_archive]}/#{THREADS[:max_archive]}] #{fname}", "INFO", "ARCHIVE" )
+            shout( "[#{THREADS[:act_archive]}/#{images[:total][:archived]}/#{images[:total][:count]}] #{fname}", "INFO", "ARCHIVE" )
             image[:archive_start] = Time.now.to_i
             error = doArchive(fname, parser.config[:rbd_backup][:arch_cmd], parser.config[:rbd_backup][:export_dir])
 
@@ -186,6 +188,7 @@ images[:rbd].each do |image_uuid, image|
             end
 
             THREADS[:act_archive] -= 1
+            images[:total][:archived] += 1
       end
 end
 
