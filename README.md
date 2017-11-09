@@ -10,21 +10,15 @@ Collection of Ceph helper tools.
 <br>
 
 * scripts: helper scripts
-
   * scripts/pimp-my-elevator.sh: sets Linux IO scheduler for HDD and SSD disks
-
   * scripts/rbd-mapper.sh: maps RBD volumes from config
 
 <br>
 
 * etc: configs
-
   * etc/config: main config, used if /etc/atceph/config is not present
-
   * etc/exclude: list of RBD volumes which should be excluded from rbd-backup
-
   * etc/rbdmap: list of RBD volumes which should be mapped by rbd-mapper.sh
-
   * etc/rbd-mapper.service: systemd service file for rbd-mapper
 
 ## Usage
@@ -34,5 +28,4 @@ Consult '$COMMAND_NAME -h' for usage summary and list of supported keys
 ## Dependencies
 
 * ruby >= 2.0
-
 * ruby-json
