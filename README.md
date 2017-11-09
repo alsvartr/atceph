@@ -3,11 +3,8 @@ Collection of Ceph helper tools.
 
 ## Description
 * cluster-df: shows cluster usage data per pool and global (including RBD provisioned space), 'ceph df' on steroids
-
 * osd-tree: shows osd tree in compact and simple way
-
 * rbd-backup: multithreaded RBD pool/image backup tool
-
 * scrub-schedule: shows scrubbing run statistics by date, useful for understanding how's your cluster is operating with scrubbing
 
 <br>
